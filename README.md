@@ -65,7 +65,7 @@ Antes de começar, você precisará ter/configurar:
 
 ```bash
 git clone https://github.com/brunao-souza/mixbot-cs2.git
-cd mixbot-backend
+cd mixbot-cs2
 ```
 
 ### Passo 2: Criar e ativar um ambiente virtual
@@ -248,8 +248,8 @@ After=network.target
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/mixbot-backend
-ExecStart=/home/ubuntu/mixbot-backend/venv/bin/python main.py
+WorkingDirectory=/home/ubuntu/mixbot-cs2
+ExecStart=/home/ubuntu/mixbot-cs2/venv/bin/python main.py
 Restart=on-failure
 RestartSec=5
 
