@@ -1,0 +1,9 @@
+discord.py==2.7.1
+python-dotenv==1.0.0
+mysql-connector-python==8.2.0
+aiomysql==0.2.0
+rcon==2.3.8
+requests==2.31.0
+aiohttp
+loguru==0.7.2
+audioop-lts; python_version>='3.13'
