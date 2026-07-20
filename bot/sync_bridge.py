@@ -2,22 +2,22 @@
 Sync Bridge — Bot Side
 ======================
 
-Responsável por sincronizar dados do banco legado do bot (bot DB)
-para o banco do ProjectMix Webapp (projectmix DB) após eventos de ranking.
+Responsible for synchronizing data from the bot's legacy database (bot DB)
+to the ProjectMix Webapp database (projectmix DB) after ranking events.
 
-Fluxos cobertos:
-  - Após update_ranks(match_id): copia matchzy_stats_* e dispara reconcile no Webapp
-  - Após register_player(): espelha o novo usuário no Webapp
+Covered flows:
+  - After update_ranks(match_id): copies matchzy_stats_* and triggers reconcile in Webapp
+  - After register_player(): mirrors the new user in Webapp
 
-Segurança:
-  - Todas as queries são parametrizadas; sem interpolação de dados externos.
-  - discord_id e steamid64 são validados antes de qualquer uso.
-  - Erros nunca propagam para a operação principal do bot.
-  - Se WEBAPP_DB_* não configurado, todas as funções retornam silenciosamente.
+Security:
+  - All queries are parameterized; no external data interpolation.
+  - discord_id and steamid64 are validated before any use.
+  - Errors never propagate to the bot's main operation.
+  - If WEBAPP_DB_* is not configured, all functions silently return.
 
-Idempotência:
-  - Usa a tabela `sync_bridge_applied_matches` no banco webapp para garantir
-    que cada match só seja processado uma vez.
+Idempotency:
+  - Uses the `sync_bridge_applied_matches` table in the webapp database to ensure
+    each match is only processed once.
 """
 
 from __future__ import annotations
@@ -139,7 +139,7 @@ def _has_webapp_config() -> bool:
 
 
 async def _get_webapp_pool() -> Optional[aiomysql.Pool]:
-    """Obtém (ou cria) o pool de conexão com o banco webapp. Thread-safe."""
+    """Gets (or creates) the webapp database connection pool. Thread-safe."""
     global _webapp_pool
     if _webapp_pool is not None and not getattr(_webapp_pool, "closed", False):
         return _webapp_pool
@@ -148,7 +148,7 @@ async def _get_webapp_pool() -> Optional[aiomysql.Pool]:
         return None
 
     async with _pool_lock:
-        # Dupla verificação após lock
+        # Double check after lock
         if _webapp_pool is not None and not getattr(_webapp_pool, "closed", False):
             return _webapp_pool
         try:
@@ -166,29 +166,29 @@ async def _get_webapp_pool() -> Optional[aiomysql.Pool]:
                 pool_recycle=3600,
             )
             logger.info(
-                "sync_bridge(bot): pool webapp conectado em %s/%s",
+                "sync_bridge(bot): webapp pool connected at %s/%s",
                 WEBAPP_DB_CONFIG.get("host"),
                 WEBAPP_DB_CONFIG.get("database"),
             )
         except Exception as exc:
-            logger.error("sync_bridge(bot): falha ao conectar banco webapp: %s", exc)
+            logger.error("sync_bridge(bot): failed to connect to webapp database: %s", exc)
             _webapp_pool = None
 
     return _webapp_pool
 
 
 async def close_webapp_pool() -> None:
-    """Fecha o pool de conexão com o banco webapp (chamar no shutdown do bot)."""
+    """Closes the webapp database connection pool (call on bot shutdown)."""
     global _webapp_pool
     if _webapp_pool is not None:
         _webapp_pool.close()
         await _webapp_pool.wait_closed()
         _webapp_pool = None
-        logger.info("sync_bridge(bot): pool webapp fechado")
+        logger.info("sync_bridge(bot): webapp pool closed")
 
 
 # ------------------------------------------------------------------
-# Idempotência
+# Idempotency
 # ------------------------------------------------------------------
 
 def _player_stats_insert_values(matchid: int, mapnumber: int, player: Dict[str, Any]) -> tuple[Any, ...]:
@@ -233,7 +233,7 @@ def _player_stats_insert_values(matchid: int, mapnumber: int, player: Dict[str, 
 
 
 async def _is_match_already_applied(bot_matchid: int) -> bool:
-    """Verifica se este match ja foi processado pelo bot no banco webapp."""
+    """Checks if this match has already been processed by the bot in the webapp database."""
     namespaced = BOT_MATCH_ID_OFFSET + int(bot_matchid)
     pool = await _get_webapp_pool()
     if pool is None:
@@ -251,7 +251,7 @@ async def _is_match_already_applied(bot_matchid: int) -> bool:
                 )
                 return await cur.fetchone() is not None
     except Exception as exc:
-        logger.error("sync_bridge(bot): erro idempotencia match=%s: %s", bot_matchid, exc)
+        logger.error("sync_bridge(bot): idempotency error match=%s: %s", bot_matchid, exc)
         return False
 
 
@@ -273,12 +273,12 @@ async def _mark_match_applied(bot_matchid: int) -> None:
                 )
     except Exception as exc:
         logger.error(
-            "sync_bridge(bot): erro ao registrar match aplicado=%s: %s", bot_matchid, exc
+            "sync_bridge(bot): error registering applied match=%s: %s", bot_matchid, exc
         )
 
 
 # ------------------------------------------------------------------
-# Cópia de stats de match Bot → projectmix
+# Copy Bot match stats → projectmix
 # ------------------------------------------------------------------
 
 async def _copy_match_stats(
@@ -288,8 +288,8 @@ async def _copy_match_stats(
     players_rows: List[Dict[str, Any]],
 ) -> bool:
     """
-    Copia as stats de um match do banco bot para o banco webapp (projectmix),
-    usando matchid = BOT_MATCH_ID_OFFSET + bot_matchid.
+    Copies the stats of a match from the bot database to the webapp database (projectmix),
+    using matchid = BOT_MATCH_ID_OFFSET + bot_matchid.
     """
     namespaced = BOT_MATCH_ID_OFFSET + int(bot_matchid)
     pool = await _get_webapp_pool()
@@ -365,14 +365,14 @@ async def _copy_match_stats(
                     )
 
         logger.info(
-            "sync_bridge(bot): stats copiadas bot_matchid=%s → namespaced=%s (%d jogadores)",
+            "sync_bridge(bot): stats copied bot_matchid=%s → namespaced=%s (%d players)",
             bot_matchid, namespaced, len(players_rows),
         )
         return True
 
     except Exception as exc:
         logger.error(
-            "sync_bridge(bot): falha ao copiar stats match=%s: %s", bot_matchid, exc
+            "sync_bridge(bot): failed to copy stats match=%s: %s", bot_matchid, exc
         )
         return False
 
@@ -447,7 +447,7 @@ async def _load_match_bundle_with_retry(
         if match_row and players_rows:
             if attempt > 1:
                 logger.info(
-                    "sync_bridge(bot): stats ficaram prontas após retry match_id=%s attempt=%s jogadores=%s",
+                    "sync_bridge(bot): stats became ready after retry match_id=%s attempt=%s players=%s",
                     mid,
                     attempt,
                     len(players_rows),
@@ -455,7 +455,7 @@ async def _load_match_bundle_with_retry(
             return match_row, maps_rows, players_rows
 
         logger.warning(
-            "sync_bridge(bot): aguardando bundle completo match_id=%s attempt=%s has_match=%s players=%s",
+            "sync_bridge(bot): waiting for complete bundle match_id=%s attempt=%s has_match=%s players=%s",
             mid,
             attempt,
             bool(match_row),
@@ -501,8 +501,8 @@ async def _upsert_ranking_in_webapp(
     win_streak: int,
 ) -> bool:
     """
-    Escreve o estado final de ranking de um jogador no banco webapp (projectmix).
-    Usado quando o Webapp não consegue reconciliar via matchzy_stats (ex: player sem User).
+    Writes the final ranking state of a player to the webapp database (projectmix).
+    Used when the Webapp cannot reconcile via matchzy_stats (e.g., player without User).
     """
     pool = await _get_webapp_pool()
     if pool is None:
@@ -523,7 +523,7 @@ async def _upsert_ranking_in_webapp(
     try:
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
-                # Upsert em users (se ainda não existir)
+                # Upsert in users (if not already exists)
                 if did > 0:
                     await cur.execute(
                         """
@@ -587,28 +587,28 @@ async def _upsert_ranking_in_webapp(
 
     except Exception as exc:
         logger.error(
-            "sync_bridge(bot): falha upsert_ranking discord_id=%s steamid64=%s: %s",
+            "sync_bridge(bot): failed upsert_ranking discord_id=%s steamid64=%s: %s",
             discord_id, steamid64, exc,
         )
         return False
 
 
 # ------------------------------------------------------------------
-# API pública — chamada após update_ranks()
+    # Public API — called after update_ranks()
 # ------------------------------------------------------------------
 
 async def sync_match_result(match_id: int, db: Any) -> None:
     """
-    Sincroniza o resultado de um match do bot para o banco webapp.
+    Synchronizes the result of a bot match to the webapp database.
 
-    Deve ser chamado APOS update_ranks(match_id) completar com sucesso.
+    Must be called AFTER update_ranks(match_id) completes successfully.
 
-    Fluxo:
-      1. Verifica idempotencia (match ja sincronizado?)
-      2. Aguarda o bundle de stats ficar materializado no banco legado
-      3. Copia matchzy_stats_* para o banco webapp (namespace BOT_MATCH_ID_OFFSET)
-      4. Faz upsert direto de ranking/player_stats para cada jogador
-      5. Marca match como aplicado apenas se tudo concluir sem falhas
+    Flow:
+      1. Checks idempotency (match already synced?)
+      2. Waits for the stats bundle to materialize in the legacy database
+      3. Copies matchzy_stats_* to the webapp database (namespace BOT_MATCH_ID_OFFSET)
+      4. Does direct upsert of ranking/player_stats for each player
+      5. Marks match as applied only if everything completes without failures
 
     `db`: instancia Database do bot (bot.database.db)
     """
@@ -621,16 +621,16 @@ async def sync_match_result(match_id: int, db: Any) -> None:
 
     try:
         if await _is_match_already_applied(mid):
-            logger.debug("sync_bridge(bot): match=%s ja aplicado, skip", mid)
+            logger.debug("sync_bridge(bot): match=%s already applied, skip", mid)
             return
 
         match_row, maps_rows, players_rows = await _load_match_bundle_with_retry(db, mid)
         if not match_row:
-            logger.warning("sync_bridge(bot): match_row nao encontrado match_id=%s", mid)
+            logger.warning("sync_bridge(bot): match_row not found match_id=%s", mid)
             return
         if not players_rows:
             logger.warning(
-                "sync_bridge(bot): bundle incompleto, sem jogadores match_id=%s", mid
+                "sync_bridge(bot): incomplete bundle, no players match_id=%s", mid
             )
             return
 
@@ -638,7 +638,7 @@ async def sync_match_result(match_id: int, db: Any) -> None:
         copied = await _copy_match_stats(mid, match_row, maps_payload, players_rows)
         if not copied:
             logger.error(
-                "sync_bridge(bot): falha ao copiar stats match_id=%s, nao vai marcar aplicado",
+                "sync_bridge(bot): failed to copy stats match_id=%s, will not mark applied",
                 mid,
             )
             return
@@ -668,7 +668,7 @@ async def sync_match_result(match_id: int, db: Any) -> None:
             if not player_row:
                 ranking_failures += 1
                 logger.warning(
-                    "sync_bridge(bot): snapshot do player ausente match_id=%s steamid64=%s",
+                    "sync_bridge(bot): missing player snapshot match_id=%s steamid64=%s",
                     mid,
                     sid,
                 )
@@ -687,7 +687,7 @@ async def sync_match_result(match_id: int, db: Any) -> None:
             if not ok:
                 ranking_failures += 1
                 logger.error(
-                    "sync_bridge(bot): falha upsert ranking match_id=%s steamid64=%s",
+                    "sync_bridge(bot): failed upsert ranking match_id=%s steamid64=%s",
                     mid,
                     sid,
                 )
@@ -706,7 +706,7 @@ async def sync_match_result(match_id: int, db: Any) -> None:
 
         await _mark_match_applied(mid)
         logger.info(
-            "sync_bridge(bot): match_id=%s sincronizado com sucesso players=%s",
+            "sync_bridge(bot): match_id=%s synced successfully players=%s",
             mid,
             ranking_upserts,
         )
@@ -714,7 +714,7 @@ async def sync_match_result(match_id: int, db: Any) -> None:
     except Exception as exc:
         tb = traceback.format_exc()
         logger.error(
-            "sync_bridge(bot): erro ao sincronizar match_id=%s: %s\n%s",
+            "sync_bridge(bot): error syncing match_id=%s: %s\n%s",
             match_id, exc, tb,
         )
 
@@ -726,8 +726,8 @@ async def sync_new_player(
     nickname: str,
 ) -> None:
     """
-    Espelha um novo jogador registrado no bot para o banco webapp.
-    Chamado após register_player() completar com sucesso.
+    Mirrors a new player registered in the bot to the webapp database.
+    Called after register_player() completes successfully.
     """
     if not _has_webapp_config():
         return
@@ -749,10 +749,10 @@ async def sync_new_player(
             win_streak=0,
         )
         logger.info(
-            "sync_bridge(bot): novo player espelhado discord_id=%s steamid64=%s",
+            "sync_bridge(bot): new player mirrored discord_id=%s steamid64=%s",
             did, sid,
         )
     except Exception as exc:
         logger.error(
-            "sync_bridge(bot): falha ao espelhar player discord_id=%s: %s", did, exc
+            "sync_bridge(bot): failed to mirror player discord_id=%s: %s", did, exc
         )

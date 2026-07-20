@@ -1,12 +1,12 @@
-"""
+﻿"""
 bot/cogs/vip_stripe.py
 ======================
-Cog de VIP mensal via Stripe Subscriptions — discord.py 2.x
+Monthly VIP cog via Stripe Subscriptions — discord.py 2.x
 
 STACK: MySQL (aiomysql via bot.database.db), loguru, aiohttp.web, discord.ext.tasks
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TABELAS CRIADAS AUTOMATICAMENTE (cog_load)
+TABLES CREATED AUTOMATICALLY (cog_load)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   vip_subscriptions
     discord_user_id        BIGINT       PRIMARY KEY
@@ -21,44 +21,44 @@ TABELAS CRIADAS AUTOMATICAMENTE (cog_load)
     event_id               VARCHAR(255) PRIMARY KEY
     processed_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
 
-TABELAS JÁ EXISTENTES (necessárias):
+EXISTING TABLES (required):
     players        (discord_id BIGINT, steamid64 VARCHAR)
     wp_player_skins (steamid VARCHAR, ...)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-VARIÁVEIS DE AMBIENTE
+ENVIRONMENT VARIABLES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  STRIPE_SECRET_KEY       sk_live_... ou sk_test_...
+  STRIPE_SECRET_KEY       sk_live_... or sk_test_...
   STRIPE_WEBHOOK_SECRET   whsec_...
-  STRIPE_PRICE_ID         price_...  (plano mensal)
-  GUILD_ID                ID do servidor Discord
-  VIP_ROLE_ID             ID do cargo VIP
-  PUBLIC_BASE_URL         https://seusite.com  (sem barra final)
-  WEBHOOK_HOST            0.0.0.0  (padrão)
-  WEBHOOK_PORT            8765     (porta diferente da porta Render/main)
+  STRIPE_PRICE_ID         price_...  (monthly plan)
+  GUILD_ID                Discord server ID
+  VIP_ROLE_ID             VIP role ID
+  PUBLIC_BASE_URL         https://yoursite.com  (no trailing slash)
+  WEBHOOK_HOST            0.0.0.0  (default)
+  WEBHOOK_PORT            8765     (different from Render/main port)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SETUP RÁPIDO
+QUICK SETUP
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. Instalar dependências:
+1. Install dependencies:
       pip install stripe>=5.0.0
 
-2. Stripe Dashboard → Catálogo de produtos:
-   • Criar produto → Adicionar price recorrente (mensal)
-   • Copiar price_xxx → STRIPE_PRICE_ID no .env
+2. Stripe Dashboard → Product catalog:
+   • Create product → Add recurring price (monthly)
+   • Copy price_xxx → STRIPE_PRICE_ID in .env
 
 3. Stripe Dashboard → Developers → Webhooks → Add endpoint:
-   • URL: https://seusite.com/stripe/webhook
-     (ou exponha WEBHOOK_PORT via nginx proxy_pass / Cloudflare Tunnel)
-   • Eventos a selecionar:
+   • URL: https://yoursite.com/stripe/webhook
+     (or expose WEBHOOK_PORT via nginx proxy_pass / Cloudflare Tunnel)
+   • Events to select:
        checkout.session.completed
        invoice.paid
        invoice.payment_succeeded
        customer.subscription.updated
        customer.subscription.deleted
-   • Copiar whsec_xxx → STRIPE_WEBHOOK_SECRET no .env
+   • Copy whsec_xxx → STRIPE_WEBHOOK_SECRET in .env
 
-4. Nginx na VPS — adicionar dentro do server block do domínio:
+4. Nginx on VPS — add inside the domain server block:
       location /stripe/webhook {
           proxy_pass         http://127.0.0.1:8765;
           proxy_http_version 1.1;
@@ -66,25 +66,25 @@ SETUP RÁPIDO
           proxy_set_header   X-Real-IP $remote_addr;
           client_max_body_size 1m;
       }
-   Depois: nginx -t && systemctl reload nginx
+   Then: nginx -t && systemctl reload nginx
 
 5. Stripe Dashboard → Developers → Webhooks → Add endpoint:
-      https://seudominio.com/stripe/webhook
+      https://yourdomain.com/stripe/webhook
 
-6. Adicionar a cog em main.py (veja o final deste arquivo).
+6. Add the cog in main.py (see the end of this file).
 
-7. Testar com Stripe CLI (opcional, dev local):
+7. Test with Stripe CLI (optional, local dev):
       stripe listen --forward-to localhost:8765/stripe/webhook
       stripe trigger invoice.paid
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SOBRE cancel_at_period_end (cancelamento ao fim do período)
+ABOUT cancel_at_period_end
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Quando o usuário cancela mas escolhe manter acesso até o fim do
-período pago, o Stripe define cancel_at_period_end=True:
-  • subscription.updated   → cancel_at_period_end=True → mantemos VIP
-  • subscription.deleted   → só dispara APÓS o period_end expirar
-Em ambos os casos revogar em subscription.deleted é correto e seguro.
+When the user cancels but chooses to keep access until the end of the
+paid period, Stripe sets cancel_at_period_end=True:
+  • subscription.updated   → cancel_at_period_end=True → we keep VIP
+  • subscription.deleted   → only fires AFTER period_end expires
+In both cases, revoking on subscription.deleted is correct and safe.
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ from loguru import logger
 from bot.database import db
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Configuração via ENV
+# Configuration via ENV
 # ══════════════════════════════════════════════════════════════════════════════
 
 STRIPE_SECRET_KEY        = os.getenv("STRIPE_SECRET_KEY", "")
@@ -123,28 +123,28 @@ stripe.api_key = STRIPE_SECRET_KEY
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Stripe helpers — wraps SDK síncrono em executor para não bloquear o event loop
+# Stripe helpers — wraps synchronous SDK in executor to not block the event loop
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def _stripe_call(fn, *args, **kwargs):
-    """Executa chamada Stripe síncrona em thread pool."""
+    """Executes synchronous Stripe call in thread pool."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, functools.partial(fn, *args, **kwargs))
 
 
 def _get_period_end(sub) -> datetime:
     """
-    Extrai current_period_end de um objeto Subscription do Stripe.
-    Compatível com API clássica e API ≥2025-12-15.clover (campo movido).
+    Extracts current_period_end from a Stripe Subscription object.
+    Compatible with classic API and API ≥2025-12-15.clover (moved field).
     """
-    # Caminho clássico
+    # Classic path
     ts = None
     try:
         ts = sub["current_period_end"]
     except (KeyError, TypeError):
         pass
 
-    # API ≥2025-12-15.clover: pode estar nos items
+    # API ≥2025-12-15.clover: may be in items
     if not ts:
         try:
             items_data = sub["items"]["data"]
@@ -153,7 +153,7 @@ def _get_period_end(sub) -> datetime:
         except (KeyError, TypeError, IndexError):
             pass
 
-    # Fallback: billing_cycle_anchor + 31 dias (último recurso)
+    # Fallback: billing_cycle_anchor + 31 days (last resort)
     if not ts:
         try:
             ts = int(sub.get("billing_cycle_anchor") or 0)
@@ -166,15 +166,15 @@ def _get_period_end(sub) -> datetime:
     if not ts:
         keys = list(sub.keys()) if hasattr(sub, "keys") else "?"
         raise KeyError(
-            f"current_period_end não encontrado na subscription. "
-            f"Campos disponíveis: {keys}"
+            f"current_period_end not found in the subscription. "
+            f"Available fields: {keys}"
         )
 
     return datetime.fromtimestamp(int(ts), tz=timezone.utc)
 
 
 async def _fetch_subscription(sub_id: str, retries: int = 3) -> stripe.Subscription:
-    """Busca subscription no Stripe com retry + backoff exponencial."""
+    """Fetches subscription from Stripe with retry + exponential backoff."""
     delay = 0.5
     last_err: Exception = RuntimeError("unreachable")
     for attempt in range(retries):
@@ -195,7 +195,7 @@ async def _fetch_subscription(sub_id: str, retries: int = 3) -> stripe.Subscript
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def _ensure_vip_tables() -> None:
-    """Cria as tabelas VIP se não existirem (idempotente)."""
+    """Creates VIP tables if they do not exist (idempotent)."""
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -217,14 +217,14 @@ async def _ensure_vip_tables() -> None:
                 processed_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
-    logger.info("[VIP] Tabelas VIP verificadas/criadas")
+    logger.info("[VIP] VIP tables checked/created")
 
 
 async def _try_claim_event(event_id: str) -> bool:
     """
-    Tenta reivindicar um event_id atomicamente via INSERT IGNORE.
-    Retorna True se este processo foi o primeiro (deve processar).
-    Retorna False se já existia (duplicado — ignorar).
+    Attempts to claim an event_id atomically via INSERT IGNORE.
+    Returns True if this process was the first (should process).
+    Returns False if it already exists (duplicate — ignore).
     """
     rows = await db.execute(
         "INSERT IGNORE INTO stripe_events_processed (event_id) VALUES (%s)",
@@ -234,7 +234,7 @@ async def _try_claim_event(event_id: str) -> bool:
 
 
 async def _unclaim_event(event_id: str) -> None:
-    """Reverte claim de evento que falhou para permitir retry do Stripe."""
+    """Reverses claim of a failed event to allow retry from Stripe."""
     await db.execute(
         "DELETE FROM stripe_events_processed WHERE event_id = %s",
         (event_id,),
@@ -242,7 +242,7 @@ async def _unclaim_event(event_id: str) -> None:
 
 
 async def _upsert_link(discord_uid: int, customer_id: str, sub_id: str) -> None:
-    """Salva/atualiza vínculo discord_user_id ↔ customer/subscription."""
+    """Saves/updates discord_user_id ↔ customer/subscription binding."""
     await db.execute(
         """
         INSERT INTO vip_subscriptions
@@ -263,8 +263,8 @@ async def _set_active(
     sub_id: str,
     expires: datetime,
 ) -> None:
-    """Ativa VIP no DB com data de expiração."""
-    # MySQL não guarda timezone — armazena como UTC naive
+    """Activates VIP in the DB with expiration date."""
+    # MySQL doesn't store timezone — store as naive UTC
     naive = expires.replace(tzinfo=None)
     await db.execute(
         """
@@ -304,8 +304,8 @@ async def _get_record(discord_uid: int) -> Optional[dict]:
 
 async def _get_expired_active() -> list[dict]:
     """
-    VIPs marcados como ativos no DB mas com vip_expires_at já passado.
-    Usado pelo expiry check para recovery após restart do bot.
+    VIPs marked as active in the DB but with vip_expires_at already past.
+    Used by the expiry check for recovery after bot restart.
     """
     return await db.fetchall(
         """
@@ -335,13 +335,13 @@ async def _find_uid_by_sub(sub_id: str) -> Optional[int]:
 
 
 def _get_plan_name(price_id: str) -> Optional[str]:
-    """Retorna nome do plano ('mensal'/'semestral'/'anual') a partir do price_id configurado."""
+    """Returns the plan name ('monthly'/'semiannual'/'annual') from the configured price_id."""
     if price_id and price_id == STRIPE_PRICE_ID:
-        return "mensal"
+        return "monthly"
     if price_id and price_id == STRIPE_PRICE_ID_SEMESTRAL:
-        return "semestral"
+        return "semiannual"
     if price_id and price_id == STRIPE_PRICE_ID_ANUAL:
-        return "anual"
+        return "annual"
     return None
 
 
@@ -354,7 +354,7 @@ async def _get_steamid(discord_uid: int) -> Optional[str]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# UI — Confirmação de revogação manual
+    # UI — Manual revocation confirmation
 # ══════════════════════════════════════════════════════════════════════════════
 
 class RevokeConfirmView(discord.ui.View):
@@ -363,7 +363,7 @@ class RevokeConfirmView(discord.ui.View):
         self.target_id = target_id
         self.cog = cog
 
-    @discord.ui.button(label="Confirmar Revogação", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Confirm Revocation", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         for child in self.children:
@@ -371,14 +371,14 @@ class RevokeConfirmView(discord.ui.View):
         await interaction.response.edit_message(content="⏳ Revogando VIP...", view=self)
         await self.cog._revoke_vip(self.target_id, reason="revogado manualmente por admin")
         await interaction.followup.send(
-            f"✅ VIP do usuário `{self.target_id}` revogado com sucesso.",
+            f"✅ VIP for user `{self.target_id}` revoked successfully.",
             ephemeral=True,
         )
 
     @discord.ui.button(label="Cancelar", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
-        await interaction.response.edit_message(content="Operação cancelada.", view=None)
+        await interaction.response.edit_message(content="Operation cancelled.", view=None)
 
 
 class LimparSkinsConfirmView(discord.ui.View):
@@ -412,27 +412,27 @@ class LimparSkinsConfirmView(discord.ui.View):
                 )
                 total += deleted or 0
             except Exception as exc:
-                logger.error(f"[VIP] Erro em /viplimparskins ao deletar de {table}: {exc}")
+                logger.error(f"[VIP] Error in /vipclearskins deleting from {table}: {exc}")
                 errors.append(table)
         logger.info(
-            f"[VIP] viplimparskins: {total} linha(s) removidas de {len(self.steamids)} steamid(s) não-VIP"
+            f"[VIP] vipclearskins: {total} line(s) removed de {len(self.steamids)} steamid(s) non-VIP"
         )
         if errors:
             await interaction.followup.send(
-                f"⚠️ Limpeza parcial: **{total}** linha(s) removidas de **{len(self.steamids)}** jogador(es).\n"
+                f"⚠️ Limpeza parcial: **{total}** line(s) removed de **{len(self.steamids)}** jogador(es).\n"
                 f"Erros nas tabelas: {', '.join(errors)}",
                 ephemeral=True,
             )
         else:
             await interaction.followup.send(
-                f"✅ Limpeza concluída! **{total}** linha(s) removidas de **{len(self.steamids)}** jogador(es) sem VIP.",
+                f"✅ Cleanup completed! **{total}** line(s) removed de **{len(self.steamids)}** player(s) without VIP.",
                 ephemeral=True,
             )
 
     @discord.ui.button(label="Cancelar", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
-        await interaction.response.edit_message(content="Operação cancelada.", view=None)
+        await interaction.response.edit_message(content="Operation cancelled.", view=None)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -456,7 +456,7 @@ class VipStripeCog(commands.Cog):
             logger.error("[VIP] STRIPE_SECRET_KEY ausente — cog carregada mas inativa")
             return
         if not STRIPE_WEBHOOK_SECRET:
-            logger.warning("[VIP] STRIPE_WEBHOOK_SECRET ausente — webhooks sem validação de assinatura")
+            logger.warning("[VIP] STRIPE_WEBHOOK_SECRET missing — webhooks without signature validation")
 
         self._server_task = asyncio.create_task(
             self._start_webhook_server(),
@@ -488,7 +488,7 @@ class VipStripeCog(commands.Cog):
     async def _expiry_check(self) -> None:
         """
         Safety net que revoga VIPs com vip_expires_at expirado no DB.
-        Executa uma vez por dia às 00:01 UTC.
+        Runs once daily at 00:01 UTC.
         """
         try:
             rows = await _get_expired_active()
@@ -497,7 +497,7 @@ class VipStripeCog(commands.Cog):
                 logger.info(f"[VIP] Expiry check → revogando VIP expirado user={uid}")
                 await self._revoke_vip(uid, reason="expirado (expiry check)")
         except Exception as exc:
-            logger.error(f"[VIP] Erro no expiry check: {exc}")
+            logger.error(f"[VIP] Error in expiry check: {exc}")
 
     @_expiry_check.before_loop
     async def _before_expiry_check(self) -> None:
@@ -506,7 +506,7 @@ class VipStripeCog(commands.Cog):
     # ── Servidor HTTP para webhooks Stripe ────────────────────────────────────
 
     async def _start_webhook_server(self) -> None:
-        app = web.Application(client_max_size=1 * 1024 * 1024)  # 1 MB máx
+        app = web.Application(client_max_size=1 * 1024 * 1024)  # 1 MB max
         app.router.add_post("/stripe/webhook", self._handle_webhook_request)
         self._runner = web.AppRunner(app, access_log=None)
         await self._runner.setup()
@@ -518,7 +518,7 @@ class VipStripeCog(commands.Cog):
         )
 
     async def _handle_webhook_request(self, request: web.Request) -> web.Response:
-        # Lê payload bruto — obrigatório para validação de assinatura
+        # Reads raw payload — required for signature validation
         try:
             payload = await request.read()
         except Exception as exc:
@@ -527,13 +527,13 @@ class VipStripeCog(commands.Cog):
 
         sig_header = request.headers.get("Stripe-Signature", "")
 
-        # 1) Valida assinatura (HMAC síncrono — sem I/O, não bloqueia)
+        # 1) Validates signature (HMAC synchronous — no I/O, does not block)
         try:
             event = stripe.Webhook.construct_event(
                 payload, sig_header, STRIPE_WEBHOOK_SECRET
             )
         except stripe.SignatureVerificationError:
-            logger.warning("[VIP] Assinatura Stripe inválida — descartando")
+            logger.warning("[VIP] Invalid Stripe signature — discarding")
             return web.Response(status=400, text="invalid signature")
         except Exception as exc:
             logger.error(f"[VIP] Erro ao construir evento Stripe: {exc}")
@@ -543,10 +543,10 @@ class VipStripeCog(commands.Cog):
         event_type = event["type"]
         logger.debug(f"[VIP] Webhook recebido: {event_type} ({event_id})")
 
-        # 2) Idempotência atômica — INSERT IGNORE garante "first-write-wins"
+        # 2) Atomic idempotency — INSERT IGNORE garante "first-write-wins"
         claimed = await _try_claim_event(event_id)
         if not claimed:
-            logger.info(f"[VIP] Evento {event_id} já processado — ignorando")
+            logger.info(f"[VIP] Evento {event_id} already processed — ignoring")
             return web.Response(status=200, text="already processed")
 
         # 3) Processa evento; em falha, desfaz o claim para o Stripe reenviar
@@ -561,10 +561,10 @@ class VipStripeCog(commands.Cog):
             elif event_type == "customer.subscription.deleted":
                 await self._on_subscription_deleted(obj)
             else:
-                logger.debug(f"[VIP] Evento ignorado (não tratado): {event_type}")
+                logger.debug(f"[VIP] Event ignored (not handled): {event_type}")
         except Exception as exc:
             logger.exception(
-                f"[VIP] Erro ao processar {event_type} ({event_id}): {exc}"
+                f"[VIP] Error processing {event_type} ({event_id}): {exc}"
             )
             await _unclaim_event(event_id)  # permite retry pelo Stripe
             return web.Response(status=500, text="internal error")
@@ -577,9 +577,9 @@ class VipStripeCog(commands.Cog):
         """
         checkout.session.completed
 
-        Salva o vínculo user ↔ customer/subscription.
-        Se payment_status == "paid" (cartão), concede VIP imediatamente.
-        Caso contrário (SEPA/boleto), aguarda invoice.paid.
+        Saves the binding user ↔ customer/subscription.
+        If payment_status == "paid" (card), grants VIP immediately.
+        Otherwise (SEPA/boleto), waits for invoice.paid.
         """
         customer_id    = session.get("customer")
         sub_id         = session.get("subscription")
@@ -604,11 +604,11 @@ class VipStripeCog(commands.Cog):
         if customer_id and sub_id:
             await _upsert_link(discord_uid, customer_id, sub_id)
             logger.info(
-                f"[VIP] Vínculo salvo: user={discord_uid} "
+                f"[VIP] Binding saved: user={discord_uid} "
                 f"customer={customer_id} sub={sub_id}"
             )
 
-            # Pagamento confirmado (cartão) → concede VIP agora sem esperar invoice.paid
+            # Payment confirmed (card) → grants VIP now without waiting for invoice.paid
             if payment_status == "paid":
                 try:
                     sub = await _fetch_subscription(sub_id)
@@ -617,17 +617,17 @@ class VipStripeCog(commands.Cog):
                     await self._grant_vip(discord_uid, until=period_end)
                     logger.info(
                         f"[VIP] VIP concedido via checkout: user={discord_uid} "
-                        f"sub={sub_id} até {period_end.isoformat()}"
+                        f"sub={sub_id} until {period_end.isoformat()}"
                     )
                 except Exception as exc:
-                    logger.error(f"[VIP] Erro ao conceder VIP no checkout: {exc}")
-                    raise  # propaga → Stripe reenvía
+                    logger.error(f"[VIP] Error granting VIP on checkout: {exc}")
+                    raise  # propagates → Stripe resends
 
     async def _on_invoice_paid(self, invoice: dict) -> None:
         """
         invoice.paid / invoice.payment_succeeded
 
-        Concede/renova VIP pelo período pago.
+        Grants/renews VIP for the paid period.
         Busca current_period_end na Subscription para definir vip_expires_at.
         """
         customer_id = invoice.get("customer")
@@ -677,7 +677,7 @@ class VipStripeCog(commands.Cog):
                         )
                         await _upsert_link(discord_uid, customer_id, sub_id)
             except Exception as exc:
-                logger.warning(f"[VIP] Fallback checkout session lookup falhou: {exc}")
+                logger.warning(f"[VIP] Fallback checkout session lookup failed: {exc}")
 
         if not discord_uid:
             logger.warning(
@@ -691,7 +691,7 @@ class VipStripeCog(commands.Cog):
             sub = await _fetch_subscription(sub_id)
         except Exception as exc:
             logger.error(f"[VIP] Falha ao buscar subscription {sub_id}: {exc}")
-            raise  # propaga → desfaz claim → Stripe reenvía
+            raise  # propagates → undoes claim → Stripe resends
 
         period_end = _get_period_end(sub)
 
@@ -699,28 +699,28 @@ class VipStripeCog(commands.Cog):
         await self._grant_vip(discord_uid, until=period_end)
         logger.info(
             f"[VIP] VIP concedido: user={discord_uid} "
-            f"sub={sub_id} até {period_end.isoformat()}"
+            f"sub={sub_id} until {period_end.isoformat()}"
         )
 
     async def _on_subscription_updated(self, sub: dict) -> None:
         """
         customer.subscription.updated
 
-        Regras de revogação respeitando o período pago:
+        Revocation rules respecting the paid period:
 
           active / trialing
-              → atualiza expiração (renovação automática confirmada)
+              → updates expiration (auto-renewal confirmed)
 
           past_due
-              → mantém VIP; usuário tem chance de pagar a fatura atrasada
+              → keeps VIP; user has a chance to pay the overdue invoice
 
           canceled / unpaid / incomplete_expired:
-              + cancel_at_period_end=True → mantém VIP até period_end
-                (subscription.deleted chegará depois, no momento certo)
+              + cancel_at_period_end=True → keeps VIP until period_end
+                (subscription.deleted will arrive later, at the right time)
               + now >= period_end         → revoga imediatamente
-              + now < period_end          → mantém até fim do período pago
+              + now < period_end          → keeps until end of paid period
 
-          Qualquer outro status → apenas log (sem ação)
+          Any other status → just log (no action)
         """
         customer_id   = sub.get("customer")
         sub_id        = sub.get("id")
@@ -762,8 +762,8 @@ class VipStripeCog(commands.Cog):
 
         elif status in BAD:
             if cancel_at_end:
-                # Usuário cancelou com acesso até o fim do período pago.
-                # Stripe só dispara subscription.deleted após period_end.
+                # User cancelled with access until the end of the paid period.
+                # Stripe only fires subscription.deleted after period_end.
                 logger.info(
                     f"[VIP] Sub {sub_id} status={status} cancel_at_period_end=True "
                     f"— aguardando period_end {period_end.isoformat()}"
@@ -773,13 +773,13 @@ class VipStripeCog(commands.Cog):
             now = datetime.now(tz=timezone.utc)
             if now >= period_end:
                 logger.info(
-                    f"[VIP] Sub {sub_id} status={status} e período expirado → revogando"
+                    f"[VIP] Sub {sub_id} status={status} and period expired → revoking"
                 )
                 await self._revoke_vip(discord_uid, reason=f"status={status}")
             else:
                 remaining_h = int((period_end - now).total_seconds() / 3600)
                 logger.info(
-                    f"[VIP] Sub {sub_id} status={status} mas período ainda válido "
+                    f"[VIP] Sub {sub_id} status={status} but period still valid "
                     f"(~{remaining_h}h) → mantendo VIP"
                 )
         else:
@@ -790,9 +790,9 @@ class VipStripeCog(commands.Cog):
         customer.subscription.deleted
 
         Comportamento garantido pelo Stripe:
-          • cancel_at_period_end=True  → evento disparado SOMENTE após period_end
+          • cancel_at_period_end=True  → evento disparado SOMENTE after period_end
           • Cancelamento imediato       → evento disparado imediatamente
-        Em ambos os casos, revogar agora é a ação correta e segura.
+        In both cases, revoking now is the correct and safe action.
         """
         customer_id = sub.get("customer")
         sub_id      = sub.get("id")
@@ -819,12 +819,12 @@ class VipStripeCog(commands.Cog):
         """Adiciona o cargo VIP ao membro no Discord."""
         guild = self.bot.get_guild(GUILD_ID)
         if not guild:
-            logger.error(f"[VIP] Guild {GUILD_ID} não encontrada no cache")
+            logger.error(f"[VIP] Guild {GUILD_ID} not found no cache")
             return
 
         role = guild.get_role(VIP_ROLE_ID)
         if not role:
-            logger.error(f"[VIP] Cargo VIP {VIP_ROLE_ID} não encontrado")
+            logger.error(f"[VIP] Cargo VIP {VIP_ROLE_ID} not found")
             return
 
         member = guild.get_member(discord_uid)
@@ -833,31 +833,31 @@ class VipStripeCog(commands.Cog):
                 member = await guild.fetch_member(discord_uid)
             except discord.NotFound:
                 logger.warning(
-                    f"[VIP] Membro {discord_uid} não está na guild — "
-                    "VIP salvo no DB mas cargo não aplicado"
+                    f"[VIP] Member {discord_uid} is not in the guild — "
+                    "VIP saved in DB but role not applied"
                 )
                 return
             except discord.Forbidden:
-                logger.error(f"[VIP] Sem permissão para buscar membro {discord_uid}")
+                logger.error(f"[VIP] No permission to fetch member {discord_uid}")
                 return
 
         if role in member.roles:
-            logger.debug(f"[VIP] {member} já tem o cargo VIP — grant ignorado")
+            logger.debug(f"[VIP] {member} already has the VIP role — grant skipped")
             return
 
         try:
             await member.add_roles(role, reason="VIP Stripe — pagamento confirmado")
             exp_str = until.strftime("%d/%m/%Y") if until else "indefinido"
-            logger.info(f"[VIP] Cargo VIP concedido a {member} (até {exp_str})")
+            logger.info(f"[VIP] VIP role granted to {member} (until {exp_str})")
         except discord.Forbidden:
-            logger.error(f"[VIP] Sem permissão para adicionar cargo a {member}")
+            logger.error(f"[VIP] No permission to add role to {member}")
         except discord.HTTPException as exc:
             logger.error(f"[VIP] HTTP erro ao adicionar cargo a {member}: {exc}")
 
     async def _revoke_vip(self, discord_uid: int, *, reason: str = "VIP expirado") -> None:
         """
-        Revoga VIP em três passos:
-          1. Remove skins do player via steamid (falha isolada — não bloqueia)
+        Revokes VIP in three steps:
+          1. Removes player skins via steamid (isolated failure — does not block)
           2. Atualiza DB → vip_active=0
           3. Remove cargo VIP no Discord
         """
@@ -870,12 +870,12 @@ class VipStripeCog(commands.Cog):
         # 3) Remover cargo Discord
         guild = self.bot.get_guild(GUILD_ID)
         if not guild:
-            logger.error(f"[VIP] Guild {GUILD_ID} não encontrada")
+            logger.error(f"[VIP] Guild {GUILD_ID} not found")
             return
 
         role = guild.get_role(VIP_ROLE_ID)
         if not role:
-            logger.error(f"[VIP] Cargo VIP {VIP_ROLE_ID} não encontrado")
+            logger.error(f"[VIP] Cargo VIP {VIP_ROLE_ID} not found")
             return
 
         member = guild.get_member(discord_uid)
@@ -884,12 +884,12 @@ class VipStripeCog(commands.Cog):
                 member = await guild.fetch_member(discord_uid)
             except discord.NotFound:
                 logger.warning(
-                    f"[VIP] Membro {discord_uid} não está na guild — "
-                    "DB atualizado mas cargo não removido"
+                    f"[VIP] Member {discord_uid} is not in the guild — "
+                    "DB updated but role not removed"
                 )
                 return
             except discord.Forbidden:
-                logger.error(f"[VIP] Sem permissão para buscar membro {discord_uid}")
+                logger.error(f"[VIP] No permission to fetch member {discord_uid}")
                 return
 
         try:
@@ -897,9 +897,9 @@ class VipStripeCog(commands.Cog):
                 await member.remove_roles(role, reason=f"VIP revogado: {reason}")
                 logger.info(f"[VIP] Cargo VIP removido de {member} ({reason})")
             else:
-                logger.debug(f"[VIP] {member} não tinha o cargo VIP — nada a remover")
+                logger.debug(f"[VIP] {member} did not have the VIP role — nothing to remove")
         except discord.Forbidden:
-            logger.error(f"[VIP] Sem permissão para remover cargo de {member}")
+            logger.error(f"[VIP] No permission to remove role from {member}")
         except discord.HTTPException as exc:
             logger.error(f"[VIP] HTTP erro ao remover cargo de {member}: {exc}")
 
@@ -907,7 +907,7 @@ class VipStripeCog(commands.Cog):
         """
         1. Busca steamid64 em players.
         2. Deleta todas as skins do player em todas as tabelas wp_player_*.
-        Falha silenciosa com log — não interrompe a revogação do VIP.
+        Silent failure with log — does not interrupt VIP revocation.
         """
         steamid: Optional[str] = None
         try:
@@ -918,7 +918,7 @@ class VipStripeCog(commands.Cog):
 
         if not steamid:
             logger.info(
-                f"[VIP] Sem steamid para user {discord_uid} — skins não removidas"
+                f"[VIP] No steamid for user {discord_uid} — skins not removed"
             )
             return
 
@@ -951,14 +951,14 @@ class VipStripeCog(commands.Cog):
     async def vip_cmd(self, interaction: discord.Interaction) -> None:
         """
         Sem VIP ativo   → mostra todos os planos para assinar.
-        Com VIP ativo   → detecta plano atual e mostra opções de upgrade/downgrade.
+        With active VIP   → detecta plano atual e mostra options de upgrade/downgrade.
         Upgrade/downgrade → modifica assinatura via API Stripe (proration imediata).
         """
         await interaction.response.defer(ephemeral=True)
 
         if not STRIPE_SECRET_KEY or not STRIPE_PRICE_ID:
             await interaction.followup.send(
-                "❌ Sistema VIP não configurado. Contate um administrador.",
+                "❌ VIP system not configured. Contact an administrator.",
                 ephemeral=True,
             )
             return
@@ -980,37 +980,37 @@ class VipStripeCog(commands.Cog):
                     current_plan = _get_plan_name(_items[0]["price"]["id"])
                     sub_item_id  = _items[0]["id"]
             except Exception as exc:
-                logger.warning(f"[VIP] Não foi possível detectar plano atual: {exc}")
+                logger.warning(f"[VIP] Could not detect current plan: {exc}")
 
         # ── Tabelas de planos ─────────────────────────────────────────────────
         _PRICE_MAP = {
-            "mensal":    STRIPE_PRICE_ID,
-            "semestral": STRIPE_PRICE_ID_SEMESTRAL,
-            "anual":     STRIPE_PRICE_ID_ANUAL,
+            "monthly":    STRIPE_PRICE_ID,
+            "semiannual": STRIPE_PRICE_ID_SEMESTRAL,
+            "annual":     STRIPE_PRICE_ID_ANUAL,
         }
         _PLAN_INFO = [
-            ("mensal",    "Mensal",    "€5,00 / mês",      "📅"),
-            ("semestral", "Semestral", "€25,00 / 6 meses", "💰"),
-            ("anual",     "Anual",     "€45,00 / ano",      "🏆"),
+            ("monthly",    "Monthly",    "€5,00 / month",      "📅"),
+            ("semiannual", "Semiannual", "€25,00 / 6 months", "💰"),
+            ("annual",     "Annual",     "€45,00 / year",      "🏆"),
         ]
-        _PLAN_ORDER = {"mensal": 0, "semestral": 1, "anual": 2}
+        _PLAN_ORDER = {"monthly": 0, "semiannual": 1, "annual": 2}
         current_order = _PLAN_ORDER.get(current_plan, -1)
 
-        # ── Monta opções do Select (exclui plano atual; marca upgrade/downgrade) ──
+        # ── Build Select options (exclude current plan; mark upgrade/downgrade) ──
         options: list[discord.SelectOption] = []
         for plan_id, plan_label, plan_desc, emoji in _PLAN_INFO:
             if not _PRICE_MAP.get(plan_id):
-                continue  # price não configurado
+                continue  # price not configured
             if plan_id == current_plan:
-                continue  # plano actual — omite do select
+                continue  # current plan — omit from select
 
             if current_plan:
                 if _PLAN_ORDER[plan_id] > current_order:
                     label = f"⬆️ Upgrade → {plan_label}"
-                    desc  = f"{plan_desc} · upgrade do plano actual"
+                    desc  = f"{plan_desc} · upgrade from current plan"
                 else:
                     label = f"⬇️ Downgrade → {plan_label}"
-                    desc  = f"{plan_desc} · downgrade do plano actual"
+                    desc  = f"{plan_desc} · downgrade from current plan"
             else:
                 label = plan_label
                 desc  = plan_desc
@@ -1021,7 +1021,7 @@ class VipStripeCog(commands.Cog):
 
         if not options:
             await interaction.followup.send(
-                "❌ Nenhum plano disponível para selecionar.", ephemeral=True
+                "❌ No plan available to select.", ephemeral=True
             )
             return
 
@@ -1031,21 +1031,21 @@ class VipStripeCog(commands.Cog):
 
         if current_plan:
             embed = discord.Embed(
-                title="⭐ Alterar Plano VIP",
+                title="⭐ Change VIP Plan",
                 description=(
-                    f"Plano actual: **{current_plan.capitalize()}** (ativo até **{exp_str}**)\n\n"
-                    "Escolha abaixo para fazer **upgrade** ou **downgrade**.\n"
-                    "A diferença proporcional é calculada automaticamente pelo Stripe.\n"
-                    "O novo plano só é aplicado após a confirmação do pagamento."
+                    f"Current plan: **{current_plan.capitalize()}** (active until **{exp_str}**)\n\n"
+                    "Choose below to **upgrade** or **downgrade**.\n"
+                    "The prorated difference is calculated automatically by Stripe.\n"
+                    "The new plan is only applied after payment confirmation."
                 ),
                 color=discord.Color.gold(),
             )
         else:
             embed = discord.Embed(
-                title="⭐ Assinar VIP",
+                title="⭐ Subscribe to VIP",
                 description=(
-                    "Escolha o plano que preferir abaixo.\n"
-                    "O cargo VIP é aplicado automaticamente após o pagamento."
+                    "Choose the plan you prefer below.\n"
+                    "The VIP role is applied automatically after payment."
                 ),
                 color=discord.Color.gold(),
             )
@@ -1053,7 +1053,7 @@ class VipStripeCog(commands.Cog):
         for plan_id, plan_label, plan_desc, emoji in _PLAN_INFO:
             if not _PRICE_MAP.get(plan_id):
                 continue
-            suffix = " ✅ atual" if plan_id == current_plan else ""
+            suffix = " ✅ current" if plan_id == current_plan else ""
             embed.add_field(
                 name=f"{emoji} {plan_label}{suffix}",
                 value=plan_desc,
@@ -1064,7 +1064,7 @@ class VipStripeCog(commands.Cog):
         class PlanSelect(discord.ui.Select):
             def __init__(self_inner):
                 super().__init__(
-                    placeholder="Escolha seu plano...",
+                    placeholder="Choose your plan...",
                     options=options,
                     min_values=1,
                     max_values=1,
@@ -1075,12 +1075,12 @@ class VipStripeCog(commands.Cog):
                 plan     = self_inner.values[0]
                 price_id = _PRICE_MAP.get(plan, STRIPE_PRICE_ID)
                 plan_labels = {
-                    "mensal":    "Mensal — €5,00/mês",
-                    "semestral": "Semestral — €25,00/6 meses",
-                    "anual":     "Anual — €45,00/ano",
+                    "monthly":    "Monthly — €5,00/month",
+                    "semiannual": "Semiannual — €25,00/6 months",
+                    "annual":     "Annual — €45,00/year",
                 }
 
-                # Já tem sub activa → modifica plano via API (sem novo Checkout)
+                # Already has active sub → modifies plan via API (no new Checkout)
                 if existing_sub_id and sub_item_id:
                     try:
                         updated_sub = await _stripe_call(
@@ -1103,20 +1103,20 @@ class VipStripeCog(commands.Cog):
 
                         if pending_update and not invoice_paid:
                             msg = (
-                                f"⏳ **{action}** para **{plan_labels[plan]}** criado, "
-                                "mas ainda está **pendente de pagamento**.\n"
-                                f"O plano atual continua ativo até o Stripe confirmar a cobrança."
+                                f"⏳ **{action}** to **{plan_labels[plan]}** created, "
+                                "but it is still **pending payment**.\n"
+                                f"The current plan remains active until Stripe confirms the charge."
                             )
                             if hosted_invoice_url:
-                                msg += f"\n[**Pagar ajuste agora →**]({hosted_invoice_url})"
+                                msg += f"\n[**Pay adjustment now →**]({hosted_invoice_url})"
                             else:
                                 msg += (
-                                    "\nAbra o portal Stripe em `/vipcancelar` para concluir "
-                                    "ou verificar a cobrança pendente."
+                                    "\nOpen the Stripe portal at `/vipcancelar` to complete "
+                                    "or check the pending charge."
                                 )
                             await sel.followup.send(msg, ephemeral=True)
                             logger.info(
-                                f"[VIP] Alteração pendente de pagamento: user={discord_uid} "
+                                f"[VIP] Change pending payment: user={discord_uid} "
                                 f"{current_plan}→{plan} sub={existing_sub_id} "
                                 f"invoice_status={invoice_status}"
                             )
@@ -1128,22 +1128,22 @@ class VipStripeCog(commands.Cog):
                         await _set_active(discord_uid, cust_id, existing_sub_id, period_end)
                         exp_new = period_end.strftime("%d/%m/%Y")
                         await sel.followup.send(
-                            f"✅ **{action}** para **{plan_labels[plan]}** concluído!\n"
-                            f"VIP ativo até **{exp_new}**.\n"
-                            "A alteração só foi aplicada após a confirmação do pagamento.",
+                            f"✅ **{action}** to **{plan_labels[plan]}** completed!\n"
+                            f"VIP active until **{exp_new}**.\n"
+                            "The change was applied after payment confirmation.",
                             ephemeral=True,
                         )
                         logger.info(
-                            f"[VIP] Plano alterado com pagamento confirmado: user={discord_uid} "
+                            f"[VIP] Plan changed with confirmed payment: user={discord_uid} "
                             f"{current_plan}→{plan} sub={existing_sub_id}"
                         )
                     except stripe.StripeError as exc:
                         logger.error(
-                            f"[VIP] Erro ao modificar subscription {existing_sub_id}: {exc}"
+                            f"[VIP] Error modifying subscription {existing_sub_id}: {exc}"
                         )
                         await sel.followup.send(
-                            "❌ Erro ao alterar plano. Tente novamente ou use "
-                            "`/vipcancelar` para aceder ao portal Stripe.",
+                            "❌ Error changing plan. Try again or use "
+                            "`/vipcancelar` to access the Stripe portal.",
                             ephemeral=True,
                         )
                     return
@@ -1164,9 +1164,9 @@ class VipStripeCog(commands.Cog):
                         allow_promotion_codes=True,
                     )
                 except stripe.StripeError as exc:
-                    logger.error(f"[VIP] Erro ao criar Checkout Session: {exc}")
+                    logger.error(f"[VIP] Error creating Checkout Session: {exc}")
                     await sel.followup.send(
-                        "❌ Erro ao gerar link de pagamento. Tente novamente em instantes.",
+                        "❌ Error generating payment link. Try again shortly.",
                         ephemeral=True,
                     )
                     return
@@ -1176,7 +1176,7 @@ class VipStripeCog(commands.Cog):
                     description=(
                         f"Plano selecionado: **{plan_labels[plan]}**\n\n"
                         "Clique no link abaixo para concluir o pagamento.\n"
-                        "O cargo VIP será aplicado automaticamente após a confirmação."
+                        "The VIP role will be applied automatically after confirmation."
                     ),
                     color=discord.Color.gold(),
                 )
@@ -1186,7 +1186,7 @@ class VipStripeCog(commands.Cog):
                     inline=False,
                 )
                 result_embed.set_footer(
-                    text="O link expira em 24h • Pagamento processado com segurança pelo Stripe"
+                    text="The link expires in 24h • Payment securely processed by Stripe"
                 )
                 await sel.followup.send(embed=result_embed, ephemeral=True)
 
@@ -1195,11 +1195,11 @@ class VipStripeCog(commands.Cog):
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
     @app_commands.command(
-        name="vipcancelar",
-        description="Gerencie ou cancele sua assinatura VIP.",
+        name="vipcancel",
+        description="Manage or cancel your VIP subscription.",
     )
     @app_commands.checks.cooldown(1, 30, key=lambda i: i.user.id)
-    async def vipcancelar(self, interaction: discord.Interaction) -> None:
+    async def vipcancel(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
 
         record = await _get_record(interaction.user.id)
@@ -1221,34 +1221,34 @@ class VipStripeCog(commands.Cog):
         except stripe.StripeError as exc:
             logger.error(f"[VIP] Erro ao criar portal session: {exc}")
             await interaction.followup.send(
-                "❌ Erro ao gerar link de gestão. Tente novamente.",
+                "❌ Error generating management link. Try again.",
                 ephemeral=True,
             )
             return
 
         embed = discord.Embed(
-            title="Gestão de Assinatura VIP",
+            title="VIP Subscription Management",
             description=(
-                "Clique no link abaixo para gerir ou cancelar a sua assinatura.\n\n"
-                "Se cancelar, o VIP permanece ativo até ao fim do período já pago."
+                "Click the link below to manage or cancel your subscription.\n\n"
+                "If you cancel, VIP remains active until the end of the already paid period."
             ),
             color=discord.Color.blurple(),
         )
         embed.add_field(
-            name="Portal Stripe",
-            value=f"[**Gerir assinatura →**]({portal.url})",
+            name="Stripe Portal",
+            value=f"[**Manage subscription →**]({portal.url})",
             inline=False,
         )
-        embed.set_footer(text="O link expira em 5 minutos")
+        embed.set_footer(text="The link expires in 5 minutes")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @vipcancelar.error
-    async def vipcancelar_error(
+    @vipcancel.error
+    async def vipcancel_error(
         self, interaction: discord.Interaction, error: app_commands.AppCommandError
     ) -> None:
         if isinstance(error, app_commands.CommandOnCooldown):
             await interaction.response.send_message(
-                f"⏳ Aguarde **{error.retry_after:.0f}s** antes de usar /vipcancelar novamente.",
+                f"⏳ Wait **{error.retry_after:.0f}s** before using /vipcancel again.",
                 ephemeral=True,
             )
 
@@ -1266,7 +1266,7 @@ class VipStripeCog(commands.Cog):
 
     @app_commands.command(
         name="vipstatus",
-        description="Verifica o status VIP de um usuário.",
+        description="Checks the VIP status of a user.",
     )
     async def vipstatus(
         self, interaction: discord.Interaction, membro: discord.Member
@@ -1276,28 +1276,28 @@ class VipStripeCog(commands.Cog):
         record = await _get_record(membro.id)
         if not record:
             await interaction.followup.send(
-                f"❌ Nenhum registro VIP encontrado para {membro.mention}.",
+                f"❌ No VIP record found for {membro.mention}.",
                 ephemeral=True,
             )
             return
 
         active  = bool(record.get("vip_active"))
-        expires = record.get("vip_expires_at")  # datetime naive UTC vindo do MySQL
+        expires = record.get("vip_expires_at")  # naive UTC datetime from MySQL
 
         if expires and isinstance(expires, datetime):
             exp_str = expires.strftime("%d/%m/%Y %H:%M UTC")
             if datetime.utcnow() > expires and active:
-                exp_str += " ⚠️ (expirado localmente — aguardando revogação)"
+                exp_str += " ⚠️ (expired locally — awaiting revocation)"
         else:
             exp_str = "N/A"
 
         embed = discord.Embed(
-            title=f"Status VIP — {membro.display_name}",
+            title=f"VIP Status — {membro.display_name}",
             color=discord.Color.green() if active else discord.Color.red(),
         )
         embed.set_thumbnail(url=membro.display_avatar.url)
-        embed.add_field(name="Ativo",     value="✅ Sim" if active else "❌ Não", inline=True)
-        embed.add_field(name="Expira em", value=exp_str, inline=True)
+        embed.add_field(name="Active",     value="✅ Yes" if active else "❌ No", inline=True)
+        embed.add_field(name="Expires in", value=exp_str, inline=True)
         embed.add_field(name="\u200b",    value="\u200b", inline=True)
         embed.add_field(
             name="Customer ID",
@@ -1313,7 +1313,7 @@ class VipStripeCog(commands.Cog):
 
     @app_commands.command(
         name="vipmanual",
-        description="Concede VIP manual sem vínculo Stripe (dias a definir).",
+        description="Grants manual VIP without Stripe link (days to set).",
     )
     async def vipmanual(
         self,
@@ -1329,19 +1329,19 @@ class VipStripeCog(commands.Cog):
             await self._grant_vip(membro.id, until=period_end)
             exp_str = period_end.strftime("%d/%m/%Y %H:%M UTC")
             await interaction.followup.send(
-                f"✅ VIP manual concedido a {membro.mention} por **{dias} dias** (até **{exp_str}**).",
+                f"✅ Manual VIP granted to {membro.mention} for **{dias} days** (until **{exp_str}**).",
                 ephemeral=True,
             )
             logger.info(
-                f"[VIP] VIP manual por {interaction.user} → user={membro.id} dias={dias} até {period_end.isoformat()}"
+                f"[VIP] Manual VIP by {interaction.user} → user={membro.id} days={dias} until {period_end.isoformat()}"
             )
         except Exception as exc:
-            logger.error(f"[VIP] Erro em /vipmanual: {exc}")
-            await interaction.followup.send(f"❌ Erro: {exc}", ephemeral=True)
+            logger.error(f"[VIP] Error in /vipmanual: {exc}")
+            await interaction.followup.send(f"❌ Error: {exc}", ephemeral=True)
 
     @app_commands.command(
         name="vipgrant",
-        description="Concede VIP manualmente a um usuário (pagamento já confirmado).",
+        description="Manually grants VIP to a user (payment already confirmed).",
     )
     async def vipgrant(
         self, interaction: discord.Interaction, membro: discord.Member
@@ -1351,8 +1351,8 @@ class VipStripeCog(commands.Cog):
         record = await _get_record(membro.id)
         if not record:
             await interaction.followup.send(
-                f"❌ Nenhum vínculo Stripe encontrado para {membro.mention}.\n"
-                "O usuário precisa ter usado /vip antes.",
+                f"❌ No Stripe link found for {membro.mention}.\n"
+                "The user must have used /vip first.",
                 ephemeral=True,
             )
             return
@@ -1362,7 +1362,7 @@ class VipStripeCog(commands.Cog):
 
         if not sub_id:
             await interaction.followup.send(
-                f"❌ Sem subscription_id no DB para {membro.mention}.",
+                f"❌ No subscription_id in DB for {membro.mention}.",
                 ephemeral=True,
             )
             return
@@ -1374,23 +1374,23 @@ class VipStripeCog(commands.Cog):
             await self._grant_vip(membro.id, until=period_end)
             exp_str = period_end.strftime("%d/%m/%Y %H:%M UTC")
             await interaction.followup.send(
-                f"✅ VIP concedido manualmente a {membro.mention} até **{exp_str}**.",
+                f"✅ VIP manually granted to {membro.mention} until **{exp_str}**.",
                 ephemeral=True,
             )
             logger.info(
-                f"[VIP] VIP concedido manualmente por {interaction.user} "
-                f"→ user={membro.id} sub={sub_id} até {period_end.isoformat()}"
+                f"[VIP] VIP manually granted by {interaction.user} "
+                f"→ user={membro.id} sub={sub_id} until {period_end.isoformat()}"
             )
         except Exception as exc:
-            logger.error(f"[VIP] Erro em /vipgrant: {exc}")
+            logger.error(f"[VIP] Error in /vipgrant: {exc}")
             await interaction.followup.send(
-                f"❌ Erro ao conceder VIP: {exc}",
+                f"❌ Error granting VIP: {exc}",
                 ephemeral=True,
             )
 
     @app_commands.command(
         name="viprevoke",
-        description="Revoga o VIP de um usuário manualmente.",
+        description="Manually revokes a user's VIP.",
     )
     async def viprevoke(
         self, interaction: discord.Interaction, membro: discord.Member
@@ -1399,28 +1399,28 @@ class VipStripeCog(commands.Cog):
 
         if not record or not record.get("vip_active"):
             await interaction.response.send_message(
-                f"ℹ️ {membro.mention} não possui VIP ativo no momento.",
+                f"ℹ️ {membro.mention} does not have an active VIP at the moment.",
                 ephemeral=True,
             )
             return
 
         view = RevokeConfirmView(membro.id, self)
         await interaction.response.send_message(
-            f"⚠️ **Confirma a revogação do VIP de {membro.mention}?**\n\n"
-            "Esta ação irá:\n"
-            "• Remover o cargo VIP do usuário\n"
-            "• **Deletar todas as skins** vinculadas ao SteamID do player\n\n"
-            "_A assinatura no Stripe **não** será cancelada automaticamente. "
-            "Faça isso manualmente no Dashboard do Stripe se necessário._",
+            f"⚠️ **Confirm revocation of VIP for {membro.mention}?**\n\n"
+            "This action will:\n"
+            "• Remove the VIP role from the user\n"
+            "• **Delete all skins** linked to the player's SteamID\n\n"
+            "_The Stripe subscription will **not** be cancelled automatically. "
+            "Do it manually in the Stripe Dashboard if needed._",
             view=view,
             ephemeral=True,
         )
 
     @app_commands.command(
-        name="viplimparskins",
-        description="Remove skins de todos os jogadores sem VIP ativo.",
+        name="vipclearskins",
+        description="Removes skins from all players without active VIP.",
     )
-    async def viplimparskins(self, interaction: discord.Interaction) -> None:
+    async def vipclearskins(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         try:
             rows = await db.fetchall(
@@ -1447,13 +1447,13 @@ class VipStripeCog(commands.Cog):
                 """
             )
         except Exception as exc:
-            logger.error(f"[VIP] Erro em /viplimparskins ao consultar: {exc}")
-            await interaction.followup.send(f"❌ Erro ao consultar banco: {exc}", ephemeral=True)
+            logger.error(f"[VIP] Error in /vipclearskins on query: {exc}")
+            await interaction.followup.send(f"❌ Error querying database: {exc}", ephemeral=True)
             return
 
         if not rows:
             await interaction.followup.send(
-                "✅ Nenhum jogador sem VIP possui skins. Nada a limpar.",
+                "✅ No non-VIP players have skins. Nothing to clean.",
                 ephemeral=True,
             )
             return
@@ -1461,16 +1461,16 @@ class VipStripeCog(commands.Cog):
         steamids = [row["steamid"] for row in rows]
         view = LimparSkinsConfirmView(self, steamids)
         await interaction.followup.send(
-            f"⚠️ **Limpeza de skins de não-VIPs**\n\n"
-            f"Encontrado(s) **{len(steamids)}** jogador(es) sem VIP ativo com skins no banco.\n\n"
-            "Deseja remover **todas** as skins desses jogadores?",
+            f"⚠️ **Non-VIP skin cleanup**\n\n"
+            f"Found **{len(steamids)}** player(s) without active VIP with skins in the database.\n\n"
+            "Do you want to remove **all** skins from these players?",
             view=view,
             ephemeral=True,
         )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Setup — chamado por bot.load_extension()
+# Setup — called by bot.load_extension()
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def setup(bot: commands.Bot) -> None:
@@ -1478,42 +1478,42 @@ async def setup(bot: commands.Bot) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# COMO CARREGAR A COG EM main.py
+# HOW TO LOAD THE COG IN main.py
 # ══════════════════════════════════════════════════════════════════════════════
 #
-# Adicione "bot.cogs.vip_stripe" à lista de cogs em main.py:
+# Add "bot.cogs.vip_stripe" to the cog list in main.py:
 #
 #   cogs = [
 #       "bot.cogs.steam",
 #       "bot.cogs.admin",
 #       ...
-#       "bot.cogs.vip_stripe",   # <-- adicionar aqui
+#       "bot.cogs.vip_stripe",   # <-- add here
 #   ]
 #
-# EXPONDO O WEBHOOK VIA NGINX (VPS)
-# O bot sobe um servidor aiohttp interno na WEBHOOK_PORT (padrão: 8765).
-# O nginx já está rodando na VPS para o site — basta adicionar um location
-# no bloco do seu domínio para fazer proxy para essa porta interna:
+# EXPOSING THE WEBHOOK VIA NGINX (VPS)
+# The bot spins up an internal aiohttp server on WEBHOOK_PORT (default: 8765).
+# nginx is already running on the VPS for the site — just add a location
+# block in your domain's server block to proxy to that internal port:
 #
-#   # Dentro do server block do seu domínio:
+#   # Inside your domain's server block:
 #   location /stripe/webhook {
 #       proxy_pass         http://127.0.0.1:8765;
 #       proxy_http_version 1.1;
 #       proxy_set_header   Host $host;
 #       proxy_set_header   X-Real-IP $remote_addr;
-#       # Stripe envia payloads de até ~64 KB; 1m é suficiente
+#       # Stripe sends payloads up to ~64 KB; 1m is enough
 #       client_max_body_size 1m;
 #   }
 #
-# URL a cadastrar no Stripe Dashboard → Developers → Webhooks:
-#   https://seudominio.com/stripe/webhook
+# URL to register in Stripe Dashboard → Developers → Webhooks:
+#   https://yourdomain.com/stripe/webhook
 #
-# VARIÁVEIS DE AMBIENTE NECESSÁRIAS (.env):
+# REQUIRED ENVIRONMENT VARIABLES (.env):
 #   STRIPE_SECRET_KEY=sk_live_...
 #   STRIPE_WEBHOOK_SECRET=whsec_...
 #   STRIPE_PRICE_ID=price_...
 #   GUILD_ID=123456789
 #   VIP_ROLE_ID=987654321
-#   PUBLIC_BASE_URL=https://seudominio.com
-#   WEBHOOK_HOST=127.0.0.1   # bind só local, nginx faz o proxy
+#   PUBLIC_BASE_URL=https://yourdomain.com
+#   WEBHOOK_HOST=127.0.0.1   # local bind only, nginx does the proxy
 #   WEBHOOK_PORT=8765

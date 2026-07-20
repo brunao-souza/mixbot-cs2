@@ -8,25 +8,25 @@ from bot.database import has_welcome_message, mark_welcome_message, get_register
 
 def build_welcome_embed(guild):
     steam_channel = guild.get_channel(CANAL_STEAMID_ID) if CANAL_STEAMID_ID else None
-    proximo_channel = guild.get_channel(SALA_PROXIMO_ID) if SALA_PROXIMO_ID else None
-    ajuda_channel = guild.get_channel(CANAL_AJUDA_ID) if CANAL_AJUDA_ID else None
+    next_channel = guild.get_channel(SALA_PROXIMO_ID) if SALA_PROXIMO_ID else None
+    help_channel = guild.get_channel(CANAL_AJUDA_ID) if CANAL_AJUDA_ID else None
 
-    steam_text = f"<#{steam_channel.id}>" if steam_channel else "#cadastro"
-    proximo_text = f"<#{proximo_channel.id}>" if proximo_channel else "Proximo"
-    ajuda_text = f"<#{ajuda_channel.id}>" if ajuda_channel else "#ajuda"
+    steam_text = f"<#{steam_channel.id}>" if steam_channel else "#registration"
+    next_text = f"<#{next_channel.id}>" if next_channel else "Next Room"
+    help_text = f"<#{help_channel.id}>" if help_channel else "#help"
 
     embed = discord.Embed(
-        title="👋 Bem-vindo(a) ao BRASIL MIX",
+        title="👋 Welcome to BRASIL MIX",
         color=0x2ecc71,
     )
     embed.description = (
-        "Para jogar, voce precisa vincular sua conta Steam:\n"
-        f"1) Va no canal de cadastro: {steam_text}\n"
-        "2) Clique no botao de cadastro fixado no canal\n"
-        "3) Preencha SteamID e nickname e finalize o vinculo\n\n"
-        f"Depois disso, entre na sala {proximo_text} para entrar na fila.\n"
-        "Para ver o passo a passo completo, use `/ajuda`.\n"
-        f"Se precisar de ajuda, entre no canal {ajuda_text}."
+        "To play, you need to link your Steam account:\n"
+        f"1) Go to the registration channel: {steam_text}\n"
+        "2) Click the registration button pinned in the channel\n"
+        "3) Fill in your SteamID and nickname, then finish linking\n\n"
+        f"After that, join the {next_text} room to enter the queue.\n"
+        "For the complete step-by-step, use `/help`.\n"
+        f"If you need help, join the {help_text} channel."
     )
     if guild.icon:
         embed.set_thumbnail(url=guild.icon.url)
@@ -68,7 +68,7 @@ async def sync_member_role_if_registered(member):
     if not player:
         return False
 
-    # Exige cadastro completo no modelo novo (players) antes de devolver o cargo.
+    # Requires complete registration in the new model (players) before restoring the role.
     steamid64 = str(player.get("steamid64") or "").strip()
     if not steamid64:
         return False
@@ -82,7 +82,7 @@ async def sync_member_role_if_registered(member):
         return False
 
     try:
-        await member.add_roles(role, reason="Cadastro completo no players")
+        await member.add_roles(role, reason="Complete registration in players")
         return True
     except Exception:
         return False

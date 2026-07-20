@@ -30,19 +30,19 @@ class SmurfCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    smurf_group = app_commands.Group(name="smurf", description="Gerenciamento anti-smurf")
+    smurf_group = app_commands.Group(name="smurf", description="Anti-smurf management")
 
-    @smurf_group.command(name="set", description="Marca jogador como smurf com ELO da conta principal")
+    @smurf_group.command(name="set", description="Mark a player as smurf with main account ELO")
     @app_commands.describe(
-        usuario="Jogador a marcar como smurf",
-        elo="ELO real da conta principal (ex: 2500)"
+        user="Player to mark as smurf",
+        elo="Real ELO from main account (e.g. 2500)"
     )
-    async def smurf_set(self, interaction: discord.Interaction, usuario: discord.Member, elo: int):
+    async def smurf_set(self, interaction: discord.Interaction, user: discord.Member, elo: int):
         if not _is_staff(interaction.user):
-            return await interaction.response.send_message("❌ Sem permissão.", ephemeral=True)
+            return await interaction.response.send_message("❌ No permission.", ephemeral=True)
 
         if elo < 1 or elo > 99999:
-            return await interaction.response.send_message("❌ ELO inválido.", ephemeral=True)
+            return await interaction.response.send_message("❌ Invalid ELO.", ephemeral=True)
 
         level = elo_to_level(elo)
 
@@ -56,55 +56,56 @@ class SmurfCog(commands.Cog):
                 set_by = VALUES(set_by),
                 updated_at = CURRENT_TIMESTAMP
             """,
-            (usuario.id, elo, level, interaction.user.id)
+            (user.id, elo, level, interaction.user.id)
         )
 
-        logger.info(f"Smurf registrado: {usuario} (discord_id={usuario.id}) ELO={elo} Lv={level} por {interaction.user}")
+        logger.info(f"Smurf registered: {user} (discord_id={user.id}) ELO={elo} Lv={level} by {interaction.user}")
 
         embed = discord.Embed(
-            title="🔵 SMURF REGISTRADO",
+            title="🔵 SMURF REGISTERED",
             color=0x3498DB
         )
-        embed.add_field(name="Jogador", value=usuario.mention, inline=True)
-        embed.add_field(name="ELO atribuído", value=str(elo), inline=True)
-        embed.add_field(name="Level derivado", value=str(level), inline=True)
-        embed.set_footer(text=f"Registrado por {interaction.user.display_name}")
+        embed.add_field(name="Player", value=user.mention, inline=True)
+        embed.add_field(name="Assigned ELO", value=str(elo), inline=True)
+        embed.add_field(name="Derived Level", value=str(level), inline=True)
+        embed.set_footer(text=f"Registered by {interaction.user.display_name}")
         await interaction.response.send_message(embed=embed)
 
-    @smurf_group.command(name="remove", description="Remove o override de smurf de um jogador")
-    @app_commands.describe(usuario="Jogador para remover o override")
-    async def smurf_remove(self, interaction: discord.Interaction, usuario: discord.Member):
+    @smurf_group.command(name="remove", description="Remove smurf override from a player")
+    @app_commands.describe(user="Player to remove the override from")
+    async def smurf_remove(self, interaction: discord.Interaction, user: discord.Member):
         if not _is_staff(interaction.user):
-            return await interaction.response.send_message("❌ Sem permissão.", ephemeral=True)
+            return await interaction.response.send_message("❌ No permission.", ephemeral=True)
+
 
         rowcount = await db.execute(
             "DELETE FROM smurf_overrides WHERE discord_id = %s",
-            (usuario.id,)
+            (user.id,)
         )
 
         if not rowcount:
             return await interaction.response.send_message(
-                f"⚠️ {usuario.mention} não estava marcado como smurf.", ephemeral=True
+                f"⚠️ {user.mention} was not marked as smurf.", ephemeral=True
             )
 
-        logger.info(f"Smurf removido: {usuario} (discord_id={usuario.id}) por {interaction.user}")
+        logger.info(f"Smurf removed: {user} (discord_id={user.id}) by {interaction.user}")
         await interaction.response.send_message(
-            f"✅ Override de smurf removido para {usuario.mention}. Faceit real será usado novamente."
+            f"✅ Smurf override removed for {user.mention}. Real Faceit will be used again."
         )
 
-    @smurf_group.command(name="list", description="Lista todos os smurfs registrados")
+    @smurf_group.command(name="list", description="List all registered smurfs")
     async def smurf_list(self, interaction: discord.Interaction):
         if not _is_staff(interaction.user):
-            return await interaction.response.send_message("❌ Sem permissão.", ephemeral=True)
+            return await interaction.response.send_message("❌ No permission.", ephemeral=True)
 
         rows = await db.fetchall(
             "SELECT discord_id, override_elo, override_level, set_by, updated_at FROM smurf_overrides ORDER BY updated_at DESC"
         )
 
         if not rows:
-            return await interaction.response.send_message("✅ Nenhum smurf registrado.", ephemeral=True)
+            return await interaction.response.send_message("✅ No smurfs registered.", ephemeral=True)
 
-        embed = discord.Embed(title="🔵 SMURFS REGISTRADOS", color=0x3498DB)
+        embed = discord.Embed(title="🔵 REGISTERED SMURFS", color=0x3498DB)
         guild = interaction.guild
 
         lines = []
@@ -114,14 +115,14 @@ class SmurfCog(commands.Cog):
             mod = guild.get_member(row["set_by"]) if guild else None
             mod_name = mod.display_name if mod else f"ID {row['set_by']}"
             lines.append(
-                f"🔵 **{name}** — ELO `{row['override_elo']}` · Lv `{row['override_level']}` · por *{mod_name}*"
+                f"🔵 **{name}** — ELO `{row['override_elo']}` · Lv `{row['override_level']}` · by *{mod_name}*"
             )
 
         embed.description = "\n".join(lines)
-        embed.set_footer(text=f"{len(rows)} smurf(s) registrado(s)")
+        embed.set_footer(text=f"{len(rows)} smurf(s) registered")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(SmurfCog(bot))
-    logger.info("Cog carregado: SmurfCog")
+    logger.info("Cog loaded: SmurfCog")

@@ -53,11 +53,11 @@ def _write_match_json_via_sudo(final_path: str, payload_json: str) -> None:
     try:
         run_as_runtime_user(["bash", "-lc", script], check=True, input_text=payload_json)
     except RuntimeError:
-        # Em hosts com sudoers restrito, /usr/bin/bash pode nao estar autorizado.
-        # Fallback para os comandos individuais (mkdir/tee/mv), normalmente whitelisted.
+        # On hosts with restricted sudoers, /usr/bin/bash may not be authorized.
+        # Falls back to individual commands (mkdir/tee/mv), which are normally whitelisted.
         _SUDO_WRITE_LEGACY_ONLY = True
         logger.info(
-            "LOCAL_MATCH: writer=sudo(shell) indisponivel; usando writer=sudo(legacy: mkdir/tee/mv)."
+            "LOCAL_MATCH: writer=sudo(shell) unavailable; using writer=sudo(legacy: mkdir/tee/mv)."
         )
         _write_match_json_via_sudo_legacy(final_path, tmp_path, payload_json)
 
@@ -76,7 +76,7 @@ def write_match_json_atomic(match_id: int, payload: Dict[str, Any]) -> str:
 
     if _FORCE_SUDO_MATCH_WRITE:
         _write_match_json_via_sudo(final_path, payload_json)
-        logger.info(f"LOCAL_MATCH: json salvo writer=sudo match={match_id} path={final_path}")
+        logger.info(f"LOCAL_MATCH: json saved writer=sudo match={match_id} path={final_path}")
         return final_path
 
     try:
@@ -84,19 +84,19 @@ def write_match_json_atomic(match_id: int, payload: Dict[str, Any]) -> str:
         with open(tmp_path, "w", encoding="utf-8") as f:
             f.write(payload_json)
         os.replace(tmp_path, final_path)
-        logger.info(f"LOCAL_MATCH: json salvo writer=local match={match_id} path={final_path}")
+        logger.info(f"LOCAL_MATCH: json saved writer=local match={match_id} path={final_path}")
         return final_path
     except PermissionError:
         _FORCE_SUDO_MATCH_WRITE = True
-        # Em alguns hosts o bot nao possui permissao nesse path por design; evita warning repetitivo.
+        # On some hosts, the bot lacks permission on this path by design; avoids repetitive warning.
         if not _REPORTED_LOCAL_WRITE_PERMISSION:
             logger.info(
-                f"LOCAL_MATCH: writer=local sem permissao em {final_path}; "
-                f"alternando para writer=sudo ({RUNTIME_SUDO_USER}) para os proximos matches."
+                f"LOCAL_MATCH: writer=local no permission on {final_path}; "
+                f"switching to writer=sudo ({RUNTIME_SUDO_USER}) for future matches."
             )
             _REPORTED_LOCAL_WRITE_PERMISSION = True
         _write_match_json_via_sudo(final_path, payload_json)
-        logger.info(f"LOCAL_MATCH: json salvo writer=sudo match={match_id} path={final_path}")
+        logger.info(f"LOCAL_MATCH: json saved writer=sudo match={match_id} path={final_path}")
     return final_path
 
 
@@ -120,7 +120,7 @@ def run_as_runtime_user(
     if check and cp.returncode != 0:
         stderr = (cp.stderr or "").strip()
         stdout = (cp.stdout or "").strip()
-        details = stderr or stdout or "sem detalhes"
+        details = stderr or stdout or "no details"
         low_details = details.lower()
         sudoers_hint = ""
         if any(
@@ -134,9 +134,9 @@ def run_as_runtime_user(
                 "sudoers",
             )
         ):
-            sudoers_hint = " Verifique sudoers (NOPASSWD) para o usuario do bot."
+            sudoers_hint = " Check sudoers (NOPASSWD) for the bot user."
         raise RuntimeError(
-            f"Falha ao executar comando runtime ({' '.join(cmd)}): {details}.{sudoers_hint}"
+            f"Failed to execute runtime command ({' '.join(cmd)}): {details}.{sudoers_hint}"
         )
     return cp
 
@@ -144,7 +144,7 @@ def run_as_runtime_user(
 def start_runtime_server(start_script: str) -> None:
     start_script = str(start_script or "").strip()
     if not start_script:
-        raise RuntimeError("Start script do runtime nao configurado.")
+        raise RuntimeError("Runtime start script not configured.")
     run_as_runtime_user(
         [start_script],
         check=True,
@@ -187,7 +187,7 @@ def load_match_in_tmux(tmux_session: str, match_id: int) -> str:
         ["tmux", "send-keys", "-t", str(tmux_session), load_cmd, "C-m"],
         check=True,
     )
-    logger.info(f"LOCAL_MATCH: load enviado session={tmux_session} cmd={load_cmd}")
+    logger.info(f"LOCAL_MATCH: load sent session={tmux_session} cmd={load_cmd}")
     return load_cmd
 
 
@@ -221,13 +221,13 @@ def stop_runtime_server(
         if "not loaded" in details or "not found" in details or "inactive" in details:
             return False
         raise RuntimeError(
-            f"Falha ao encerrar service '{service_name}': {cp.stderr or cp.stdout}"
+            f"Failed to stop service '{service_name}': {cp.stderr or cp.stdout}"
         )
 
     if tmux_session:
         return stop_tmux_session(tmux_session)
 
-    raise RuntimeError("Nenhum mecanismo de parada configurado para o runtime.")
+    raise RuntimeError("No stop mechanism configured for the runtime.")
 
 
 def stop_tmux_session(tmux_session: str) -> bool:
@@ -241,4 +241,4 @@ def stop_tmux_session(tmux_session: str) -> bool:
     stderr = (cp.stderr or "").lower()
     if "can't find session" in stderr or "failed to connect to server" in stderr:
         return False
-    raise RuntimeError(f"Falha ao encerrar tmux '{tmux_session}': {cp.stderr or cp.stdout}")
+    raise RuntimeError(f"Failed to stop tmux '{tmux_session}': {cp.stderr or cp.stdout}")

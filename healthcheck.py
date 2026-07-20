@@ -12,4 +12,4 @@ async def start_healthcheck():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
-    print(f"🌐 Healthcheck ativo em /health na porta {port}") 
+    print(f"🌐 Healthcheck active on /health at port {port}") 

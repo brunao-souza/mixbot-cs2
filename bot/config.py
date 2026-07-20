@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-# Carrega o arquivo .env
+# Loads the .env file
 env_path = Path(__file__).parent.parent / '.env'
 load_dotenv(env_path)
 
@@ -75,7 +75,7 @@ def _env_timezone(name: str, default: str) -> ZoneInfo:
     except Exception:
         return ZoneInfo(default)
 
-# ================= BOT E APIs =================
+# ================= BOT AND APIS =================
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN', '')
 DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN') or DISCORD_TOKEN
 STEAM_API_KEY = os.getenv('STEAM_API_KEY')
@@ -95,7 +95,7 @@ CS2_SHARED_KEY = os.getenv('CS2_SHARED_KEY') or os.getenv('DISCORD_BRIDGE_API_KE
 MATCHZY_WEBHOOK_KEY = os.getenv('MATCHZY_WEBHOOK_KEY', '')
 MATCHZY_ADMIN_STEAMID64 = (os.getenv('MATCHZY_ADMIN_STEAMID64', '') or '').strip()
 
-# ================= BANCO DE DADOS =================
+# ================= DATABASE =================
 DB_CONFIG = {
     'host': os.getenv('DB_HOST'),
     'user': os.getenv('DB_USER'),
@@ -105,9 +105,9 @@ DB_CONFIG = {
     'autocommit': True
 }
 
-# ================= SYNC BRIDGE — WEBAPP DB (opcional) =================
-# Quando configurado, o bot espelha resultados de ranking para o banco do ProjectMix.
-# Se não configurado, o sync é desativado silenciosamente.
+# ================= SYNC BRIDGE — WEBAPP DB (optional) =================
+# When configured, the bot mirrors ranking results to the ProjectMix database.
+# If not configured, sync is silently disabled.
 WEBAPP_DB_CONFIG = {
     'host': os.getenv('WEBAPP_DB_HOST', os.getenv('DB_HOST', '127.0.0.1')),
     'port': int(os.getenv('WEBAPP_DB_PORT', os.getenv('DB_PORT', 3306))),
@@ -116,7 +116,7 @@ WEBAPP_DB_CONFIG = {
     'database': os.getenv('WEBAPP_DB_NAME', ''),
 }
 
-# ================= CANAIS GERAIS (GLOBAIS) =================
+# ================= GENERAL CHANNELS (GLOBAL) =================
 CANAL_FILA_ID = int(os.getenv('CANAL_FILA_ID', 0))
 CANAL_LOGS_ID = int(os.getenv('CANAL_LOGS_ID', 0))
 CANAL_RANKING_ID = int(os.getenv('CANAL_RANKING_ID', 0))
@@ -183,7 +183,7 @@ RUNTIME_ONLINE_GRACE_SECONDS = _env_int(
 RUNTIME_TMUX_ONLINE_GRACE_SECONDS = RUNTIME_ONLINE_GRACE_SECONDS
 RUNTIME_USE_RCON_LOAD_ONLY = _env_bool('RUNTIME_USE_RCON_LOAD_ONLY', True)
 
-# ================= POOL GLOBAL DE SERVIDORES =================
+# ================= GLOBAL SERVER POOL =================
 POOL_SERVER_IDS = _env_int_list('POOL_SERVER_IDS') or [1, 2, 3, 4, 5]
 POOL_SERVERS = {}
 _DEFAULT_SERVER_FLAGS = {
@@ -234,7 +234,7 @@ for _sid in POOL_SERVER_IDS:
         _slot["modes"] = ["mix", "tourney"]
     POOL_SERVERS[_runtime_id] = _slot
 
-# ================= SERVIDORES DE TORNEIO =================
+# ================= TOURNAMENT SERVERS =================
 TOURNAMENT_SERVERS = {
     "tserver1": {
         "active": _env_bool("TS1_ACTIVE", False),
@@ -288,7 +288,7 @@ TOURNAMENT_SERVERS = {
     },
 }
 
-# ================= SERVIDORES (ARENAS) =================
+# ================= SERVERS (ARENAS) =================
 SERVERS = {}
 for _runtime_id, _slot in sorted(POOL_SERVERS.items(), key=lambda item: int(item[1].get("slot_id") or 0)):
     _sid = int(_slot.get("slot_id") or 0)
@@ -322,9 +322,9 @@ for _runtime_id, _slot in sorted(POOL_SERVERS.items(), key=lambda item: int(item
         },
     }
 
-# ================= MAPAS E OUTRAS CONFIGS =================
-TIME_1_NAME = "Time 1"
-TIME_2_NAME = "Time 2"
+# ================= MAPS AND OTHER CONFIGS =================
+TIME_1_NAME = "Team 1"
+TIME_2_NAME = "Team 2"
 
 MAPS_BASE = [
     "Mirage", "Inferno", "Nuke", "Ancient",
@@ -370,9 +370,9 @@ PICK_TIMEOUT = 30
 MAP_VETO_TIMEOUT = 30
 MAP_VETO_FINAL_TIMEOUT = 15
 MATCH_CHECK_INTERVAL = 10
-MATCH_POST_ACTION_DELAY = 60  # segundos para reset/changelevel apos fim da partida
-# Data de corte para backfill de partidas no startup (YYYY-MM-DD).
-# Usado para evitar retroprocessar partidas de seasons antigas.
+MATCH_POST_ACTION_DELAY = 60  # seconds for reset/changelevel after match ends
+# Cutoff date for backfilling matches on startup (YYYY-MM-DD).
+# Used to avoid reprocessing matches from old seasons.
 SEASON_START_DATE = os.getenv('SEASON_START_DATE', '2026-03-01').strip()
 
 # Ranking Points
@@ -381,11 +381,11 @@ POINTS_LOSS_BASE = -50
 ADR_BONUS_MAX = 20
 
 # ==============================================================================
-# RETROCOMPATIBILIDADE (FIX CRÃTICO)
-# Cria variÃ¡veis globais apontando para o Server 1 para que o main.py nÃ£o quebre
+# BACKWARD COMPATIBILITY (CRITICAL FIX)
+# Creates global variables pointing to Server 1 so main.py doesn't break
 # ==============================================================================
 try:
-    # Apelidos para o primeiro lobby ativo/configurado.
+    # Aliases for the first active/configured lobby.
     _primary_key = "server1" if "server1" in SERVERS else next(iter(SERVERS.keys()))
     _primary_server = SERVERS[_primary_key]
     SALA_MIX_ID = _primary_server["channels"]["picks_voice"]
@@ -393,11 +393,11 @@ try:
     SALA_TIME1_ID = _primary_server["channels"]["team1_voice"]
     SALA_TIME2_ID = _primary_server["channels"]["team2_voice"]
     
-    # Apelidos para Configs de ConexÃ£o Antigas
+    # Aliases for Legacy Connection Configs
     CS2_CONFIG = _primary_server["cs2"]
     FTP_CONFIG = _primary_server.get("ftp", {})
 except (KeyError, StopIteration):
-    print("Aviso: nenhum servidor de lobby configurado no .env")
+    print("Warning: no lobby server configured in .env")
     SALA_MIX_ID = 0
     CANAL_PICKS_ID = 0
     SALA_TIME1_ID = 0

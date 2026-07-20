@@ -13,13 +13,12 @@ from discord.ui import View, Button
 
 
 class AdminCog(commands.Cog):
- 
-    
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
     def get_server(self, server_num: str):
-        """Retorna a config do servidor baseado no número (1 ou 2)"""
+        """Returns the server config based on the number (1 or 2)"""
         key = f"server{str(server_num).strip()}"
         return SERVERS.get(key)
 
@@ -42,18 +41,18 @@ class AdminCog(commands.Cog):
     async def _confirm_server_action(self, ctx, server, action_text: str, on_confirm: Callable[[], Awaitable[None]]):
         if not server:
             return
-        prompt = f"Voce tem certeza que deseja executar esse comando em:\n**{server['name']}**?\n`{action_text}`"
+        prompt = f"Are you sure you want to execute this command on:\n**{server['name']}**?\n`{action_text}`"
         async def _cancel():
             return
         view = AdminConfirmView(ctx.author.id, on_confirm, _cancel)
         await ctx.send(prompt, view=view)
 
-    # ================= COMANDOS GERAIS =================
+    # ================= GENERAL COMMANDS =================
 
-    @app_commands.command(name="clear", description="Apaga mensagens do canal atual (ate 100).")
+    @app_commands.command(name="clear", description="Deletes messages from the current channel (up to 100).")
     async def clear(self, interaction: discord.Interaction, quantidade: int = 100):
         ctx = await commands.Context.from_interaction(interaction)
-        """Limpa mensagens do canal atual"""
+        """Clears messages from the current channel"""
         interaction = getattr(ctx, "interaction", None)
         if interaction and not interaction.response.is_done():
             await interaction.response.defer(ephemeral=True)
@@ -65,46 +64,46 @@ class AdminCog(commands.Cog):
 
         me = ctx.guild.me if ctx.guild else None
         if not me or not me.guild_permissions.manage_messages:
-            return await _reply("? Eu n?o tenho permiss?o de 'Gerenciar Mensagens' neste servidor.")
+            return await _reply("❌ I don't have 'Manage Messages' permission in this server.")
 
         quantidade = max(1, min(int(quantidade or 1), 100))
         try:
             deleted = await ctx.channel.purge(limit=quantidade + (0 if interaction else 1))
             removed = max(0, len(deleted) - (0 if interaction else 1))
-            await _reply(f"?? **{removed} mensagens apagadas!**")
+            await _reply(f"✅ **{removed} messages deleted!**")
         except Exception as e:
-            logger.error(f"? Erro ao limpar mensagens: {e}")
-            await _reply(f"? Erro ao apagar: {e}")
+            logger.error(f"❌ Error clearing messages: {e}")
+            await _reply(f"❌ Error deleting: {e}")
 
 
-    # ================= COMANDOS MANUAIS (MULTI-SERVER) =================
-    
-    @app_commands.command(name="rcon", description="Envia comando RCON para um servidor.")
+    # ================= MANUAL COMMANDS (MULTI-SERVER) =================
+
+    @app_commands.command(name="rcon", description="Sends RCON command to a server.")
     async def rcon(self, interaction: discord.Interaction, server_num: str, command: str):
         ctx = await commands.Context.from_interaction(interaction)
 
         server = self.get_server(server_num)
-        if not server: return await ctx.send("Server invalido.")
+        if not server: return await ctx.send("Invalid server.")
 
         async def _do():
-            await ctx.send(f"Enviando para **{server['name']}**...")
+            await ctx.send(f"Sending to **{server['name']}**...")
             resp = await send_rcon(server, command)
             if resp:
                 if len(resp) > 1900: resp = resp[:1900] + "..."
                 await ctx.send(f"```\n{resp}\n```")
             else:
-                await ctx.send("Comando enviado.")
+                await ctx.send("Command sent.")
 
         await self._confirm_server_action(ctx, server, f"/rcon {server_num} {command}", _do)
 
 
 
-    @app_commands.command(name="say", description="Envia mensagem no chat do servidor via RCON.")
+    @app_commands.command(name="say", description="Sends a message in the server chat via RCON.")
     async def say(self, interaction: discord.Interaction, server_num: str, msg: str):
         ctx = await commands.Context.from_interaction(interaction)
 
         server = self.get_server(server_num)
-        if not server: return await ctx.send("Server invalido.")
+        if not server: return await ctx.send("Invalid server.")
 
         async def _do():
             safe_msg = msg.replace('"', '').replace(';', '')
@@ -127,12 +126,12 @@ class AdminCog(commands.Cog):
     _LABELS = {
         "1": "Mix 1", "2": "Mix 2", "3": "Mix 3",
         "4": "Mix 4", "5": "Mix 5",
-        "retake": "Retake", "all": "Todos os servidores",
-        "bot": "MixBot", "tudo": "Tudo (servidores + bot)",
+        "retake": "Retake", "all": "All servers",
+        "bot": "MixBot", "tudo": "Everything (servers + bot)",
     }
 
-    @app_commands.command(name="reiniciar", description="Reinicia um servidor de jogo ou o próprio bot.")
-    @app_commands.describe(servidor="Qual servidor/serviço reiniciar")
+    @app_commands.command(name="restart", description="Restarts a game server or the bot itself.")
+    @app_commands.describe(servidor="Which server/service to restart")
     @app_commands.choices(servidor=[
         app_commands.Choice(name="Mix 1",                    value="1"),
         app_commands.Choice(name="Mix 2",                    value="2"),
@@ -140,9 +139,9 @@ class AdminCog(commands.Cog):
         app_commands.Choice(name="Mix 4",                    value="4"),
         app_commands.Choice(name="Mix 5",                    value="5"),
         app_commands.Choice(name="Retake",                   value="retake"),
-        app_commands.Choice(name="Todos os servidores",      value="all"),
+        app_commands.Choice(name="All servers",              value="all"),
         app_commands.Choice(name="MixBot",                   value="bot"),
-        app_commands.Choice(name="Tudo (servidores + bot)",  value="tudo"),
+        app_commands.Choice(name="Everything (servers + bot)", value="tudo"),
     ])
     async def reiniciar(self, interaction: discord.Interaction, servidor: str):
         await interaction.response.defer(ephemeral=True)
@@ -159,7 +158,7 @@ class AdminCog(commands.Cog):
         else:
             services = [self._SERVICES[servidor]]
 
-        await interaction.edit_original_response(content=f"⏳ Reiniciando **{label}**...")
+        await interaction.edit_original_response(content=f"⏳ Restarting **{label}**...")
 
         erros = []
         for svc in services:
@@ -178,23 +177,23 @@ class AdminCog(commands.Cog):
                 erros.append(f"`{svc}`: {exc}")
 
         if erros:
-            msg = f"⚠️ Erro ao reiniciar **{label}**:\n" + "\n".join(erros)
+            msg = f"⚠️ Error restarting **{label}**:\n" + "\n".join(erros)
             await interaction.edit_original_response(content=msg)
-            logger.info(f"[Admin] {interaction.user} reiniciou '{label}' — ERRO")
+            logger.info(f"[Admin] {interaction.user} restarted '{label}' — ERROR")
             return
 
         if restart_bot:
-            suffix = " Servidores reiniciados." if services else ""
+            suffix = " Servers restarted." if services else ""
             await interaction.edit_original_response(
-                content=f"✅ **{label}** — reiniciando o bot agora...{suffix}"
+                content=f"✅ **{label}** — restarting the bot now...{suffix}"
             )
-            logger.info(f"[Admin] {interaction.user} reiniciou '{label}' — OK (bot reiniciando)")
+            logger.info(f"[Admin] {interaction.user} restarted '{label}' — OK (bot restarting)")
             await asyncio.sleep(1)
             asyncio.create_task(self._restart_bot())
             return
 
-        await interaction.edit_original_response(content=f"✅ **{label}** reiniciado com sucesso!")
-        logger.info(f"[Admin] {interaction.user} reiniciou '{label}' — OK")
+        await interaction.edit_original_response(content=f"✅ **{label}** restarted successfully!")
+        logger.info(f"[Admin] {interaction.user} restarted '{label}' — OK")
 
     async def _restart_bot(self):
         await asyncio.sleep(1)
@@ -205,7 +204,7 @@ class AdminCog(commands.Cog):
         )
         await proc.communicate()
 
-    @app_commands.command(name="fixmatch", description="Corrige vencedor da partida pelo placar dos mapas.")
+    @app_commands.command(name="fixmatch", description="Fixes the match winner based on map scores.")
     async def fixmatch(self, interaction: discord.Interaction, match_id: int | None = None):
         ctx = await commands.Context.from_interaction(interaction)
         if match_id is None:
@@ -213,76 +212,76 @@ class AdminCog(commands.Cog):
             if s_id and sessions.get(s_id, {}).get("match_id"):
                 match_id = int(sessions[s_id]["match_id"])
         if match_id is None:
-            await ctx.send("❌ Informe o match_id ou use no canal de picks com partida ativa.")
+            await ctx.send("❌ Inform the match_id or use in the picks channel with an active match.")
             return
 
         async def _do():
             result = await fix_match_winner_from_maps(match_id)
             if not result:
-                await ctx.send("❌ Nao foi possivel definir vencedor (match inexistente ou placar empatado).")
+                await ctx.send("❌ Could not determine winner (match does not exist or tied score).")
                 return
             s1 = int(result.get("map_score1") or 0)
             s2 = int(result.get("map_score2") or 0)
-            winner = result.get("winner") or "desconhecido"
+            winner = result.get("winner") or "unknown"
             await ctx.send(
-                f"✅ Match #{match_id} ajustado. Vencedor: **{winner}** (mapa {s1}x{s2})."
+                f"✅ Match #{match_id} adjusted. Winner: **{winner}** (map {s1}x{s2})."
             )
 
-        prompt = f"Voce tem certeza que deseja executar esse comando?\n`/fixmatch {match_id}`"
+        prompt = f"Are you sure you want to execute this command?\n`/fixmatch {match_id}`"
         async def _cancel():
             return
         view = AdminConfirmView(ctx.author.id, _do, _cancel)
         await ctx.send(prompt, view=view)
 
-    @app_commands.command(name="comandosadmin", description="Mostra a lista de comandos administrativos.")
+    @app_commands.command(name="admincommands", description="Shows the list of admin commands.")
     async def comandosadmin(self, interaction: discord.Interaction):
         ctx = await commands.Context.from_interaction(interaction)
-        embed = discord.Embed(title="Comandos de Admin", color=0x2ecc71)
+        embed = discord.Embed(title="Admin Commands", color=0x2ecc71)
         embed.add_field(
-            name="Moderacao",
+            name="Moderation",
             value=(
-                "`/clear <qtd>` - apaga ate 100 mensagens do canal atual\n"
-                "`/say <server> <msg>` - envia mensagem no chat do servidor via RCON"
+                "`/clear <amount>` - deletes up to 100 messages from the current channel\n"
+                "`/say <server> <msg>` - sends message in server chat via RCON"
             ),
             inline=False,
         )
         embed.add_field(
-            name="RCON/Mapa",
+            name="RCON/Map",
             value=(
-                "`/rcon <server> <comando>` - envia comando bruto via RCON\n"
-                "`/rcon 1 status` - mostra status do servidor\n"
-                "`/rcon 1 changelevel de_mirage` - troca o mapa atual\n"
-                "`/rcon 1 mp_pause_match 1` - pausa a partida\n"
-                "`/rcon 1 mp_unpause_match` - despausa a partida"
+                "`/rcon <server> <command>` - sends raw RCON command\n"
+                "`/rcon 1 status` - shows server status\n"
+                "`/rcon 1 changelevel de_mirage` - changes current map\n"
+                "`/rcon 1 mp_pause_match 1` - pauses the match\n"
+                "`/rcon 1 mp_unpause_match` - unpauses the match"
             ),
             inline=False,
         )
         embed.add_field(
-            name="Servidores",
+            name="Servers",
             value=(
-                "`/reiniciar 1-5` - reinicia o Mix 1 a 5\n"
-                "`/reiniciar retake` - reinicia o servidor Retake\n"
-                "`/reiniciar all` - reinicia todos os servidores"
+                "`/restart 1-5` - restarts Mix 1 through 5\n"
+                "`/restart retake` - restarts the Retake server\n"
+                "`/restart all` - restarts all servers"
             ),
             inline=False,
         )
         embed.add_field(
-            name="Mix/Painel",
+            name="Mix/Panel",
             value=(
-                "`/fixpainel` - reseta o painel de monitoramento\n"
-                "`/fixmatch [id da partida]` - corrige vencedor da partida\n"
-                "`/cancelarmix` - cancela o mix ativo no canal de picks"
+                "`/fixpanel` - resets the monitoring panel\n"
+                "`/fixmatch [match id]` - fixes the match winner\n"
+                "`/cancelmix` - cancels the active mix in the picks channel"
             ),
             inline=False,
         )
         embed.add_field(
-            name="Substituicao",
-            value="`/trocar @user1 @user2` - substitui um jogador por outro durante a partida",
+            name="Substitution",
+            value="`/swap @user1 @user2` - replaces a player during the match",
             inline=False,
         )
         await ctx.send(embed=embed)
 
-    @app_commands.command(name="trocar", description="Substitui um jogador por outro durante o mix.")
+    @app_commands.command(name="swap", description="Replaces a player with another during the mix.")
     async def trocar(self, interaction: discord.Interaction, user1: discord.Member, user2: discord.Member):
         ctx = await commands.Context.from_interaction(interaction)
         s_id = next((i for i, s in SERVERS.items() if ctx.channel.id == s["channels"]["picks_text"]), None)
@@ -294,19 +293,19 @@ class AdminCog(commands.Cog):
                 s["channels"].get("team2_voice"),
             ]), None)
         if not s_id:
-            await ctx.send("❌ Use este comando no canal de picks do servidor.")
+            await ctx.send("❌ Use this command in the server's picks channel.")
             return
         session, active = await self._ensure_active_session(s_id)
         if not active:
-            await ctx.send("❌ Não há mix ativo neste servidor.")
+            await ctx.send("❌ There is no active mix on this server.")
             return
         if user1.bot or user2.bot:
-            await ctx.send("❌ Não é possível trocar bots.")
+            await ctx.send("❌ Cannot swap bots.")
             return
 
         embed = discord.Embed(
-            title="Confirmar troca?",
-            description=f"Deseja trocar **{user1.display_name}** por **{user2.display_name}**?",
+            title="Confirm swap?",
+            description=f"Do you want to swap **{user1.display_name}** with **{user2.display_name}**?",
             color=0xf1c40f,
         )
         embed.set_thumbnail(url=user1.display_avatar.url)
@@ -325,28 +324,28 @@ class AdminConfirmView(View):
 
     async def _check_user(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.requester_id:
-            await interaction.response.send_message("Apenas quem executou o comando pode confirmar.", ephemeral=True)
+            await interaction.response.send_message("Only the command executor can confirm.", ephemeral=True)
             return False
         return True
 
-    @discord.ui.button(label="SIM", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="YES", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: Button):
         if not await self._check_user(interaction):
             return
-        await interaction.response.edit_message(content="Acao confirmada.", view=None)
+        await interaction.response.edit_message(content="Action confirmed.", view=None)
         await self.on_confirm()
 
-    @discord.ui.button(label="NAO", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="NO", style=discord.ButtonStyle.danger)
     async def cancel(self, interaction: discord.Interaction, button: Button):
         if not await self._check_user(interaction):
             return
-        await interaction.response.edit_message(content="Acao cancelada.", view=None)
+        await interaction.response.edit_message(content="Action cancelled.", view=None)
         await self.on_cancel()
 
-# === ESTA PARTE É OBRIGATÓRIA PARA O ARQUIVO CARREGAR ===
+# === THIS PART IS REQUIRED FOR THE FILE TO LOAD ===
 async def setup(bot: commands.Bot):
     await bot.add_cog(AdminCog(bot))
-    logger.debug("AdminCog carregado")
+    logger.debug("AdminCog loaded")
 
 
 class TrocarConfirmView(View):
@@ -357,7 +356,7 @@ class TrocarConfirmView(View):
         self.user1 = user1
         self.user2 = user2
 
-    @discord.ui.button(label="SIM", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="YES", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: Button):
         session = sessions.get(self.s_id)
         if not session:
@@ -372,23 +371,23 @@ class TrocarConfirmView(View):
             if row and row.get("match_id"):
                 session.update({"active": True, "status": "LIVE", "match_id": int(row["match_id"])})
         if not session.get("active"):
-            await interaction.response.edit_message(content="❌ Mix não está mais ativo.", embed=None, view=None)
+            await interaction.response.edit_message(content="❌ Mix is no longer active.", embed=None, view=None)
             return
         server = SERVERS.get(self.s_id)
         if not server:
-            await interaction.response.edit_message(content="❌ Server inválido.", embed=None, view=None)
+            await interaction.response.edit_message(content="❌ Invalid server.", embed=None, view=None)
             return
 
         try:
             rank1 = await get_player_rank(self.user1.id)
             rank2 = await get_player_rank(self.user2.id)
         except Exception as e:
-            await interaction.response.edit_message(content=f"❌ Erro ao buscar SteamID: {e}", embed=None, view=None)
+            await interaction.response.edit_message(content=f"❌ Error fetching SteamID: {e}", embed=None, view=None)
             return
         steamid1 = rank1.get("steamid64") if rank1 else None
         steamid2 = rank2.get("steamid64") if rank2 else None
         if not steamid2:
-            await interaction.response.edit_message(content="❌ O jogador que vai entrar não tem SteamID vinculado.", embed=None, view=None)
+            await interaction.response.edit_message(content="❌ The player joining does not have a linked SteamID.", embed=None, view=None)
             return
         try:
             team_label = None
@@ -400,7 +399,7 @@ class TrocarConfirmView(View):
                     team_label = None
             if not team_label:
                 await interaction.response.edit_message(
-                    content="❌ Não foi possível identificar o time no Banco de Dados.",
+                    content="❌ Could not identify the team in the Database.",
                     embed=None,
                     view=None,
                 )
@@ -410,7 +409,7 @@ class TrocarConfirmView(View):
                 await send_rcon(server, f'matchzy_removeplayer "{steamid1}"')
             await send_rcon(server, f'matchzy_addplayer {steamid2} {team_label} "{safe_name}"')
         except Exception as e:
-            await interaction.response.edit_message(content=f"❌ Erro ao atualizar MatchZy: {e}", embed=None, view=None)
+            await interaction.response.edit_message(content=f"❌ Error updating MatchZy: {e}", embed=None, view=None)
             return
 
         def replace_in_list(lst):
@@ -444,8 +443,8 @@ class TrocarConfirmView(View):
                 except:
                     pass
 
-        await interaction.response.edit_message(content=f"Troca realizada: {self.user1.display_name} -> {self.user2.display_name}", embed=None, view=None)
+        await interaction.response.edit_message(content=f"Swap completed: {self.user1.display_name} -> {self.user2.display_name}", embed=None, view=None)
 
-    @discord.ui.button(label="NÃO", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="NO", style=discord.ButtonStyle.danger)
     async def cancel(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.edit_message(content="❌ Operação cancelada.", embed=None, view=None)
+        await interaction.response.edit_message(content="❌ Operation cancelled.", embed=None, view=None)

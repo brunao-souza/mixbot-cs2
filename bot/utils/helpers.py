@@ -4,17 +4,17 @@ from datetime import datetime
 
 
 def format_team(team: List[discord.Member]) -> str:
-    """Formata lista de membros para exibição"""
+    """Formats a list of members for display"""
     return "\n".join(f"- {p.display_name}" for p in team)
 
 
 def format_timestamp() -> str:
-    """Retorna timestamp formatado para logs"""
+    """Returns formatted timestamp for logs"""
     return datetime.now().strftime("%H:%M:%S")
 
 
 def truncate_name(name: str, max_length: int = 12) -> str:
-    """Trunca um nome mantendo comprimento máximo"""
+    """Truncates a name to keep maximum length"""
     return name[:max_length] if len(name) > max_length else name
 
 

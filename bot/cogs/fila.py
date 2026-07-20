@@ -24,11 +24,11 @@ from bot.database import (
 )
 
 
-def get_fila_cog(bot: commands.Bot):
-    return bot.get_cog("FilaCog")
+def get_queue_cog(bot: commands.Bot):
+    return bot.get_cog("QueueCog")
 
 
-class FilaCog(commands.Cog):
+class QueueCog(commands.Cog):
     READY_RECHECK_DELAY_SECONDS = 10.0
     READY_SEND_DELAY_SECONDS = 0.0
 
@@ -47,7 +47,7 @@ class FilaCog(commands.Cog):
     async def cog_load(self):
         self.display_loop.start()
         self.bot.loop.create_task(self.restore_queue_on_startup())
-        logger.debug("FilaCog carregado.")
+        logger.debug("QueueCog loaded.")
 
     async def cog_unload(self):
         self.display_loop.cancel()
@@ -162,7 +162,7 @@ class FilaCog(commands.Cog):
 
     async def _dispatch_batches(self, batches: List[List[Dict[str, Any]]]):
         for batch in batches:
-            self.bot.dispatch("fila_pronta", batch)
+            self.bot.dispatch("queue_ready", batch)
 
     def _has_grace_delay(self) -> bool:
         return self.READY_RECHECK_DELAY_SECONDS > 0 or self.READY_SEND_DELAY_SECONDS > 0
@@ -207,7 +207,7 @@ class FilaCog(commands.Cog):
                 except discord.NotFound:
                     pass
                 except Exception as exc:
-                    logger.warning(f"Falha ao remover ping da fila: {exc}")
+                    logger.warning(f"Failed to remove queue ping: {exc}")
                 self._queue_ping_message = None
             return
 
@@ -224,7 +224,7 @@ class FilaCog(commands.Cog):
                 except discord.NotFound:
                     pass
                 except Exception as exc:
-                    logger.warning(f"Falha ao remover ping da fila: {exc}")
+                    logger.warning(f"Failed to remove queue ping: {exc}")
                 self._queue_ping_message = None
             return
 
@@ -243,14 +243,14 @@ class FilaCog(commands.Cog):
                 allowed_mentions=discord.AllowedMentions(roles=True),
             )
         except Exception as exc:
-            logger.warning(f"Falha ao sincronizar ping da fila: {exc}")
+            logger.warning(f"Failed to sync queue ping: {exc}")
 
     def _schedule_ready_dispatch(self, guild: Optional[discord.Guild]):
         if guild is None or not self._has_grace_delay():
             return
         if self._ready_dispatch_task and not self._ready_dispatch_task.done():
             return
-        # Não agenda dispatch enquanto vencedores de partida ainda não foram priorizados.
+        # Don't schedule dispatch while match winners haven't been prioritized yet.
         if self._pending_winner_ids:
             return
         self._ready_dispatch_task = self.bot.loop.create_task(self._run_ready_dispatch_after_grace(int(guild.id)))
@@ -309,7 +309,7 @@ class FilaCog(commands.Cog):
         except asyncio.CancelledError:
             pass
         except Exception as exc:
-            logger.warning(f"Falha no agendamento de fila pronta: {exc}")
+            logger.warning(f"Failed to schedule ready queue: {exc}")
         finally:
             self._ready_dispatch_task = None
 
@@ -318,8 +318,8 @@ class FilaCog(commands.Cog):
             return
         async with self._lock:
             await self._expire_stale_winner_priority_locked()
-            # Cancela qualquer dispatch ativo para evitar que um timer antigo
-            # dispare enquanto os vencedores ainda não foram priorizados.
+            # Cancel any active dispatch to prevent an old timer
+            # from firing while winners haven't been prioritized yet.
             if self._ready_dispatch_task and not self._ready_dispatch_task.done():
                 self._ready_dispatch_task.cancel()
                 self._ready_dispatch_task = None
@@ -591,7 +591,7 @@ class FilaCog(commands.Cog):
             else:
                 batches = await self._collect_ready_batches_locked(guild)
         for batch in batches:
-            self.bot.dispatch("fila_pronta", batch)
+            self.bot.dispatch("queue_ready", batch)
 
     async def requeue_payload(self, payload: List[Dict[str, Any]], dispatch_ready: bool = False):
         if not payload:
@@ -705,7 +705,7 @@ class FilaCog(commands.Cog):
 
         await self._dispatch_batches(batches)
 
-        logger.info(f"\u2705 Fila reconstruida: {len(self._queue)} jogadores.")
+        logger.info(f"\u2705 Queue rebuilt: {len(self._queue)} players.")
 
     async def _render_queue_embed(self):
         channel = self.bot.get_channel(CANAL_FILA_ID)
@@ -716,13 +716,13 @@ class FilaCog(commands.Cog):
             await self._expire_stale_winner_priority_locked()
 
         embed = discord.Embed(
-            title="📋 FILA DE ESPERA",
+            title="📋 WAITING QUEUE",
             color=0x3498DB,
             timestamp=discord.utils.utcnow(),
         )
 
         if not self._queue:
-            embed.add_field(name="💤 Status", value="Fila vazia", inline=False)
+            embed.add_field(name="💤 Status", value="Empty queue", inline=False)
         else:
             now = discord.utils.utcnow()
             lines = []
@@ -731,16 +731,16 @@ class FilaCog(commands.Cog):
                 join_time = self._normalize_dt(entry.get("join_time"))
                 mins = int(max(0, (now - join_time).total_seconds() // 60))
                 damage = int(entry.get("damage") or 0)
-                name = member.display_name if member else "Saiu"
+                name = member.display_name if member else "Left"
                 dmg_suffix = f" | 💥 {damage}" if damage > 0 else ""
                 lines.append(f"`#{pos:02}` - **{name}** 🔹 🕒 {mins}m{dmg_suffix}")
-            embed.add_field(name=f"👥 Jogadores ({len(self._queue)})", value="\n".join(lines), inline=False)
+            embed.add_field(name=f"👥 Players ({len(self._queue)})", value="\n".join(lines), inline=False)
 
         if self._queue_message is None:
             try:
                 async for msg in channel.history(limit=15):
                     title = (msg.embeds[0].title or "").upper() if msg.embeds else ""
-                    if msg.author == self.bot.user and msg.embeds and "FILA DE ESPERA" in title:
+                    if msg.author == self.bot.user and msg.embeds and "WAITING QUEUE" in title:
                         self._queue_message = msg
                         break
             except Exception:
@@ -754,7 +754,7 @@ class FilaCog(commands.Cog):
         except discord.NotFound:
             self._queue_message = await channel.send(embed=embed)
         except Exception as exc:
-            logger.warning(f"Falha ao atualizar embed da fila: {exc}")
+            logger.warning(f"Failed to update queue embed: {exc}")
 
         await self._sync_queue_ping_message(channel)
 
@@ -787,7 +787,7 @@ class FilaCog(commands.Cog):
                     except Exception:
                         pass
                 try:
-                    await member.send("Voce possui punicao ativa e nao pode entrar na fila.")
+                    await member.send("You have an active punishment and cannot join the queue.")
                 except Exception:
                     pass
                 return
@@ -842,4 +842,4 @@ class FilaCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(FilaCog(bot))
+    await bot.add_cog(QueueCog(bot))

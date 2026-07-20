@@ -9,7 +9,7 @@ What it does:
    - TOP 1 / TOP 2 / TOP 3
    - TOP 10 for ranks 4..10
    - TOP 50 for ranks 11..50
-   - FUNDADOR for players with total_matches > 10
+   - FOUNDER for players with total_matches > 10
 
 Default mode is dry-run. Use --apply to execute mutations.
 """
@@ -40,7 +40,7 @@ ROLE_NAME_DEFAULTS = {
     "top3": "\U0001F949TOP 3 - SEASON 0",
     "top10": "\U0001F396\ufe0fTOP 10 - SEASON 0",
     "top50": "\U0001F3C5TOP 50 - SEASON 0",
-    "founder": "\u269c\ufe0f FUNDADOR - SEASON 0",
+    "founder": "\u269c\ufe0f FOUNDER - SEASON 0",
 }
 
 ROLE_ENV_OVERRIDES = {

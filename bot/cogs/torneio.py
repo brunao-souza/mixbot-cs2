@@ -45,7 +45,7 @@ from bot.utils.server_pool import get_server_pool, NoServerAvailableError
 STEAMID_RE = re.compile(r"^\d{17}$")
 READY_TIMEOUT_SECONDS = 600
 
-# Pools por modalidade (podem ser ajustados facilmente).
+# Pools per mode (can be adjusted easily).
 TOURNEY_POOL_5V5 = [
     "Ancient",
     "Anubis",
@@ -101,8 +101,8 @@ MIX_LOGO_URL = (
 )
 
 
-class TorneioReadyOpenButton(Button):
-    def __init__(self, cog: "TorneioCog", session_id: str):
+class TournamentReadyOpenButton(Button):
+    def __init__(self, cog: "TournamentCog", session_id: str):
         super().__init__(label="READY", style=discord.ButtonStyle.success, emoji="✅")
         self.cog = cog
         self.session_id = session_id
@@ -111,14 +111,14 @@ class TorneioReadyOpenButton(Button):
         await self.cog.handle_ready_click_open(interaction, self.session_id)
 
 
-class TorneioReadyOpenView(View):
-    def __init__(self, cog: "TorneioCog", session_id: str):
+class TournamentReadyOpenView(View):
+    def __init__(self, cog: "TournamentCog", session_id: str):
         super().__init__(timeout=READY_TIMEOUT_SECONDS)
-        self.add_item(TorneioReadyOpenButton(cog, session_id))
+        self.add_item(TournamentReadyOpenButton(cog, session_id))
 
 
-class TorneioBanButton(Button):
-    def __init__(self, cog: "TorneioCog", session_id: str, map_name: str):
+class TournamentBanButton(Button):
+    def __init__(self, cog: "TournamentCog", session_id: str, map_name: str):
         super().__init__(label=map_name, style=discord.ButtonStyle.secondary)
         self.cog = cog
         self.session_id = session_id
@@ -128,14 +128,14 @@ class TorneioBanButton(Button):
         await self.cog.handle_map_ban(interaction, self.session_id, self.map_name)
 
 
-class TorneioBanView(View):
-    def __init__(self, cog: "TorneioCog", session_id: str, maps_left: List[str]):
+class TournamentBanView(View):
+    def __init__(self, cog: "TournamentCog", session_id: str, maps_left: List[str]):
         super().__init__(timeout=None)
         for map_name in maps_left:
-            self.add_item(TorneioBanButton(cog, session_id, map_name))
+            self.add_item(TournamentBanButton(cog, session_id, map_name))
 
 
-class TorneioCog(commands.Cog):
+class TournamentCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.sessions: Dict[str, Dict] = {}
@@ -150,7 +150,7 @@ class TorneioCog(commands.Cog):
         self.tournament_server_watchdog.cancel()
 
     def _is_overtime(self, mode: str, max_loser_rounds: int) -> bool:
-        # 2x2: overtime com 8x8 (MR8). 5x5: overtime com 12x12 (MR12).
+        # 2x2: overtime at 8x8 (MR8). 5x5: overtime at 12x12 (MR12).
         threshold = 8 if (mode or "").strip().lower() == "2x2" else 12
         return int(max_loser_rounds or 0) >= threshold
 
@@ -193,8 +193,8 @@ class TorneioCog(commands.Cog):
 
             score1 = int(row.get("score1") or 0)  # series score (maps)
             score2 = int(row.get("score2") or 0)  # series score (maps)
-            round1 = int(row.get("round_score1") or 0)  # round score acumulado
-            round2 = int(row.get("round_score2") or 0)  # round score acumulado
+            round1 = int(row.get("round_score1") or 0)  # accumulated round score
+            round2 = int(row.get("round_score2") or 0)  # accumulated round score
             mode = str(row.get("mode") or "")
             series = str(row.get("series") or "md1")
             needed_wins = (self._series_num_maps(series) // 2) + 1
@@ -229,8 +229,8 @@ class TorneioCog(commands.Cog):
 
     def _render_group_table(self, title: str, rows: List[Dict]) -> str:
         if not rows:
-            return f"{title}\n```text\nSem times no grupo.\n```"
-        header = "POS EQUIPE           PJ V GP PP D  +/- PTS\n"
+            return f"{title}\n```text\nNo teams in the group.\n```"
+        header = "POS TEAM            GP W OTW OTL L  +/- PTS\n"
         body_lines = []
         for i, r in enumerate(rows, start=1):
             team = str(r["team"])[:15]
@@ -246,19 +246,19 @@ class TorneioCog(commands.Cog):
         rows_a = await self._build_group_rows("A")
         rows_b = await self._build_group_rows("B")
         embed = discord.Embed(
-            title="🏆 Tabela de Grupos - Torneio",
-            description="📊 Atualizacao automatica da classificacao dos grupos.",
+            title="🏆 Tournament Group Standings",
+            description="📊 Automatic group classification update.",
             color=0x2ECC71,
             timestamp=discord.utils.utcnow(),
         )
         embed.set_thumbnail(url=MIX_LOGO_URL)
-        embed.add_field(name="🅰️ Grupo A", value=self._render_group_table("Grupo A", rows_a), inline=False)
-        embed.add_field(name="🅱️ Grupo B", value=self._render_group_table("Grupo B", rows_b), inline=False)
-        embed.set_footer(text="✅ V=3 | 🟨 GP=2 | 🟧 PP=1 | ❌ D=0 | ⚖️ +/- saldo de rounds")
+        embed.add_field(name="🅰️ Group A", value=self._render_group_table("Group A", rows_a), inline=False)
+        embed.add_field(name="🅱️ Group B", value=self._render_group_table("Group B", rows_b), inline=False)
+        embed.set_footer(text="✅ W=3 | 🟨 OTW=2 | 🟧 OTL=1 | ❌ L=0 | ⚖️ +/- round differential")
         return embed
 
     async def _upsert_groups_embed(self, preferred_channel: Optional[discord.TextChannel] = None):
-        # Atualiza somente no canal definido por env.
+        # Updates only in the channel defined by env.
         channel: Optional[discord.TextChannel] = None
         if TOURN_GROUPS_CHANNEL_ID:
             ch = self.bot.get_channel(TOURN_GROUPS_CHANNEL_ID)
@@ -352,36 +352,36 @@ class TorneioCog(commands.Cog):
                     if result:
                         s1 = int(result.get("score1") or 0)
                         s2 = int(result.get("score2") or 0)
-                        status = "✅ Finalizado"
+                        status = "✅ Finished"
                         score_txt = self._fmt_score(team1, s1, s2, team2)
                         game_texts.append(f"{status} • {score_txt}")
                     else:
                         key = self._pair_key(team1, team2)
                         if key in live_pairs:
-                            game_texts.append(f"🟡 Em andamento • {team1} vs {team2}")
+                            game_texts.append(f"🟡 In progress • {team1} vs {team2}")
                         else:
-                            game_texts.append(f"⏳ Agendado • {team1} vs {team2}")
+                            game_texts.append(f"⏳ Scheduled • {team1} vs {team2}")
 
                 if len(game_texts) == 1:
-                    lines.append(f"**Bloco {block}**\n• {game_texts[0]}")
+                    lines.append(f"**Block {block}**\n• {game_texts[0]}")
                 else:
-                    lines.append(f"**Bloco {block}**\n• {game_texts[0]}\n• {game_texts[1]}")
-            return "\n\n".join(lines) if lines else "Sem jogos."
+                    lines.append(f"**Block {block}**\n• {game_texts[0]}\n• {game_texts[1]}")
+            return "\n\n".join(lines) if lines else "No matches."
 
         embed = discord.Embed(
-            title="🗓️ Cronograma de Jogos - Fase de Grupos",
-            description="Início: **19:00 (London)** • Atualiza ao fim de cada partida.",
+            title="🗓️ Match Schedule - Group Stage",
+            description="Start: **19:00 (London)** • Updates at the end of each match.",
             color=0x2ECC71,
             timestamp=discord.utils.utcnow(),
         )
         embed.set_thumbnail(url=MIX_LOGO_URL)
-        embed.add_field(name="🅰️ Grupo A", value=render_group_lines(GROUP_A_SCHEDULE), inline=False)
-        embed.add_field(name="🅱️ Grupo B", value=render_group_lines(GROUP_B_SCHEDULE), inline=False)
-        embed.set_footer(text="Status: ⏳ Agendado | 🟡 Em andamento | ✅ Finalizado")
+        embed.add_field(name="🅰️ Group A", value=render_group_lines(GROUP_A_SCHEDULE), inline=False)
+        embed.add_field(name="🅱️ Group B", value=render_group_lines(GROUP_B_SCHEDULE), inline=False)
+        embed.set_footer(text="Status: ⏳ Scheduled | 🟡 In progress | ✅ Finished")
         return embed
 
     async def _upsert_schedule_embed(self, preferred_channel: Optional[discord.TextChannel] = None):
-        # Atualiza somente no canal definido por env.
+        # Updates only in the channel defined by env.
         channel: Optional[discord.TextChannel] = None
         if TOURN_SCHEDULE_CHANNEL_ID:
             ch = self.bot.get_channel(TOURN_SCHEDULE_CHANNEL_ID)
@@ -451,24 +451,24 @@ class TorneioCog(commands.Cog):
         if req in ("auto", ""):
             picked = await self._pick_available_tournament_server()
             if not picked:
-                return None, "Nao ha servidor de torneio disponivel agora."
+                return None, "No tournament server available right now."
             return picked, None
 
         runtime_id = self._normalize_runtime_request(req)
         if not runtime_id:
-            return None, f"Servidor invalido: `{requested}`."
+            return None, f"Invalid server: `{requested}`."
         if self._is_server_reserved(runtime_id):
-            return None, f"O servidor `{runtime_id}` ja esta em uso no momento."
+            return None, f"Server `{runtime_id}` is already in use."
 
         free_ids = await get_server_pool().available_runtime_ids("tourney")
         if runtime_id not in free_ids:
-            return None, f"O servidor `{runtime_id}` esta ocupado ou indisponivel para torneio."
+            return None, f"Server `{runtime_id}` is busy or unavailable for tournament."
         return runtime_id, None
 
     def _compact_response(self, value: object, limit: int = 220) -> str:
         text = str(value or "").strip()
         if not text:
-            return "sem resposta"
+            return "no response"
         line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
         line = line or text.replace("\n", " ").strip()
         if len(line) > limit:
@@ -483,7 +483,7 @@ class TorneioCog(commands.Cog):
             await get_server_pool().release_server_for_match(int(matchid), reason=reason)
         except Exception as e:
             logger.warning(
-                f"TORNEIO[{session.get('session_id')}] falha ao liberar runtime match={matchid}: {self._compact_response(e)}"
+                f"TOURNAMENT[{session.get('session_id')}] failed to release runtime match={matchid}: {self._compact_response(e)}"
             )
 
     async def _execute_tournament_match(self, session: Dict, payload: Dict):
@@ -504,7 +504,7 @@ class TorneioCog(commands.Cog):
         session["json_local_path"] = runtime.get("json_path")
         session["tserver_name"] = runtime.get("runtime_id")
         logger.info(
-            f"TORNEIO[{session.get('session_id')}] match={session.get('matchid')} runtime={runtime.get('runtime_id')} "
+            f"TOURNAMENT[{session.get('session_id')}] match={session.get('matchid')} runtime={runtime.get('runtime_id')} "
             f"json={runtime.get('json_path')}"
         )
 
@@ -525,7 +525,7 @@ class TorneioCog(commands.Cog):
             needed_wins = (self._series_num_maps(str(sess.get("series") or "md1")) // 2) + 1
             ended = (score1 >= needed_wins or score2 >= needed_wins)
             logger.info(
-                f"TORNEIO[{sid}] serie={sess.get('series')} placar_series={score1}-{score2} "
+                f"TOURNAMENT[{sid}] series={sess.get('series')} series_score={score1}-{score2} "
                 f"needed={needed_wins} ended={ended}"
             )
             if not ended:
@@ -536,14 +536,14 @@ class TorneioCog(commands.Cog):
                 self._reserved_servers.discard(tserver_id)
             await self._release_runtime_server(sess, reason="tourney_poll_end")
             try:
-                await self._move_waiting_players_to_saida(sess)
+                await self._move_waiting_players_to_exit(sess)
                 await self._cleanup_session_resources(sess)
             except Exception:
                 pass
             text_ch = self.bot.get_channel(sess.get("text_channel_id", 0))
             if text_ch:
                 try:
-                    await text_ch.send(f"Partida de torneio #{sess['matchid']} finalizada. Servidor liberado.")
+                    await text_ch.send(f"Tournament match #{sess['matchid']} finished. Server released.")
                 except Exception:
                     pass
             self.sessions.pop(sid, None)
@@ -567,7 +567,7 @@ class TorneioCog(commands.Cog):
                 try:
                     await interaction.response.defer(thinking=False, ephemeral=True)
                 except discord.HTTPException as e:
-                    # Race condition: interaction ja pode ter sido reconhecida pelo bridge/hybrid.
+                    # Race condition: interaction may already be acknowledged by bridge/hybrid.
                     if getattr(e, "code", None) != 40060:
                         raise
             return await interaction.followup.send(*args, **kwargs)
@@ -625,7 +625,7 @@ class TorneioCog(commands.Cog):
             return steps
         if s == "md3":
             if (mode or "").lower().strip() == "2x2":
-                # Regra customizada solicitada:
+                # Custom rule requested:
                 # pick T1, pick T2, ban T2, decider
                 return [
                     ("pick", team1),
@@ -672,7 +672,7 @@ class TorneioCog(commands.Cog):
             ch = guild.get_channel(cid)
             if ch:
                 try:
-                    await ch.delete(reason="Torneio cancelado/finalizado")
+                    await ch.delete(reason="Tournament cancelled/finished")
                 except Exception:
                     pass
 
@@ -684,15 +684,15 @@ class TorneioCog(commands.Cog):
                 if not member:
                     continue
                 try:
-                    await text_channel.set_permissions(member, overwrite=None, reason="Limpeza de permissao torneio")
+                    await text_channel.set_permissions(member, overwrite=None, reason="Tournament permission cleanup")
                 except Exception:
                     pass
 
-    async def _move_waiting_players_to_saida(self, session: Dict):
+    async def _move_waiting_players_to_exit(self, session: Dict):
         guild = self.bot.get_guild(session["guild_id"])
         if not guild:
             return
-        saida = guild.get_channel(SALA_SAIDA_ID) if SALA_SAIDA_ID else None
+        exit_channel = guild.get_channel(SALA_SAIDA_ID) if SALA_SAIDA_ID else None
         voice_ids = [
             session.get("voice_team1_id"),
             session.get("voice_team2_id"),
@@ -707,7 +707,7 @@ class TorneioCog(commands.Cog):
                 if member.bot:
                     continue
                 try:
-                    await member.move_to(saida if saida else None)
+                    await member.move_to(exit_channel if exit_channel else None)
                 except Exception:
                     pass
 
@@ -722,17 +722,17 @@ class TorneioCog(commands.Cog):
         banned = session.get("banned_maps", [])
         picked = session.get("picked_maps", [])
         embed = discord.Embed(
-            title=f"🗺️ Veto de Mapas - {session['team1_name']} vs {session['team2_name']}",
+            title=f"🗺️ Map Veto - {session['team1_name']} vs {session['team2_name']}",
             color=0xE67E22,
         )
-        embed.add_field(name="🎯 Mapas restantes", value="\n".join([f"- {m}" for m in maps_left]), inline=False)
+        embed.add_field(name="🎯 Maps remaining", value="\n".join([f"- {m}" for m in maps_left]), inline=False)
         if banned:
-            embed.add_field(name="❌ Mapas banidos", value="\n".join([f"- {m}" for m in banned]), inline=False)
+            embed.add_field(name="❌ Banned maps", value="\n".join([f"- {m}" for m in banned]), inline=False)
         if picked:
-            embed.add_field(name="✅ Mapas picks", value="\n".join([f"- {m}" for m in picked]), inline=False)
+            embed.add_field(name="✅ Picked maps", value="\n".join([f"- {m}" for m in picked]), inline=False)
         if action and turn:
-            action_label = "banir" if action == "ban" else "pickar"
-            cap_name = "Capitao"
+            action_label = "ban" if action == "ban" else "pick"
+            cap_name = "Captain"
             cap_avatar = None
             cap_profile = (session.get("captain_profiles", {}) or {}).get(turn, {})
             if cap_profile:
@@ -749,48 +749,48 @@ class TorneioCog(commands.Cog):
                             cap_avatar = member.display_avatar.url
                         except Exception:
                             cap_avatar = None
-            embed.set_footer(text=f"⏳ Vez de {action_label}: {turn} | {cap_name}")
+            embed.set_footer(text=f"⏳ Turn to {action_label}: {turn} | {cap_name}")
             if cap_avatar:
                 embed.set_author(name=f"{turn} • {cap_name}", icon_url=cap_avatar)
             else:
                 embed.set_author(name=f"{turn} • {cap_name}")
         else:
-            embed.set_footer(text="🏁 Veto finalizado")
+            embed.set_footer(text="🏁 Veto finished")
         embed.set_thumbnail(url=MIX_LOGO_URL)
         return embed
 
     def _build_ready_panel_embed(self, session: Dict) -> discord.Embed:
         pending_ids = sorted(session.get("pending_ids", []))
         ready_ids = sorted(session.get("ready_ids", []))
-        pending_text = "\n".join([f"- <@{uid}>" for uid in pending_ids]) if pending_ids else "Ninguem pendente."
+        pending_text = "\n".join([f"- <@{uid}>" for uid in pending_ids]) if pending_ids else "No one pending."
         ready_text = "\n".join([f"- <@{uid}>" for uid in ready_ids]) if ready_ids else "-"
 
         embed = discord.Embed(
-            title="✅ Confirmacao READY",
+            title="✅ READY Confirmation",
             description=(
-                f"Confronto: **{session['team1_name']} vs {session['team2_name']}**\n"
-                "Confirme no botao abaixo neste canal."
+                f"Match: **{session['team1_name']} vs {session['team2_name']}**\n"
+                "Confirm using the button below in this channel."
             ),
             color=0x2ECC71 if pending_ids else 0x3498DB,
         )
         embed.add_field(
             name="Status",
-            value=f"Confirmados: **{len(ready_ids)}** | Pendentes: **{len(pending_ids)}**",
+            value=f"Confirmed: **{len(ready_ids)}** | Pending: **{len(pending_ids)}**",
             inline=False,
         )
         embed.add_field(
-            name="Partida",
+            name="Match",
             value=(
                 f"MatchID: **{session.get('matchid')}**\n"
-                f"Modo: **{session.get('mode')}** | Serie: **{str(session.get('series', '')).upper()}**\n"
-                f"Servidor: **{session.get('tserver_name', '-')}**"
+                f"Mode: **{session.get('mode')}** | Series: **{str(session.get('series', '')).upper()}**\n"
+                f"Server: **{session.get('tserver_name', '-')}**"
             ),
             inline=False,
         )
-        embed.add_field(name="Pendentes", value=pending_text, inline=False)
-        embed.add_field(name="Confirmados", value=ready_text, inline=False)
+        embed.add_field(name="Pending", value=pending_text, inline=False)
+        embed.add_field(name="Confirmed", value=ready_text, inline=False)
         embed.set_thumbnail(url=MIX_LOGO_URL)
-        embed.set_footer(text="Tempo maximo: 10 minutos")
+        embed.set_footer(text="Max time: 10 minutes")
         return embed
 
     async def _edit_flow_message(self, session_id: str, embed: discord.Embed, view: Optional[View]):
@@ -815,7 +815,7 @@ class TorneioCog(commands.Cog):
         if not session:
             return
         embed = self._build_ready_panel_embed(session)
-        view = None if disable_view else TorneioReadyOpenView(self, session_id)
+        view = None if disable_view else TournamentReadyOpenView(self, session_id)
         await self._edit_flow_message(session_id, embed, view)
 
     def _build_match_json(self, session: Dict) -> Dict:
@@ -829,7 +829,7 @@ class TorneioCog(commands.Cog):
         matchid_int = int(session["matchid"])
         mode_raw = str(session.get("mode", "")).lower().strip()
         # CS2:
-        # - 5x5 competitivo: game_type 0 / game_mode 1
+        # - 5x5 competitive: game_type 0 / game_mode 1
         # - 2x2 wingman:     game_type 0 / game_mode 2
         extra_mode_cvars = {}
         if mode_raw == "5x5":
@@ -849,7 +849,7 @@ class TorneioCog(commands.Cog):
             "team2": {"name": session["team2_name"], "players": team2_players},
             "spectators": {
                 "players": {},
-                "name": "Streamer",  # TODO: definir steamid do streamer quando disponivel
+                "name": "Streamer",  # TODO: set streamer steamid when available
             },
             "clinch_series": True,
             "cvars": {
@@ -877,7 +877,7 @@ class TorneioCog(commands.Cog):
         session["step_index"] = 0
 
         embed = self._build_veto_embed(session)
-        view = TorneioBanView(self, session_id, session["maps_left"])
+        view = TournamentBanView(self, session_id, session["maps_left"])
         await self._edit_flow_message(session_id, embed, view)
         session["veto_message_id"] = session.get("ready_panel_message_id")
 
@@ -889,19 +889,19 @@ class TorneioCog(commands.Cog):
     ):
         session = self.sessions.get(session_id)
         if not session:
-            await interaction.response.send_message("Sessao de torneio nao encontrada.", ephemeral=True)
+            await interaction.response.send_message("Tournament session not found.", ephemeral=True)
             return
         if expected_user_id is not None and interaction.user.id != expected_user_id:
-            await interaction.response.send_message("Este botao nao pertence a voce.", ephemeral=True)
+            await interaction.response.send_message("This button is not for you.", ephemeral=True)
             return
         if interaction.user.id not in session.get("all_player_ids", []):
-            await interaction.response.send_message("Voce nao faz parte desta partida.", ephemeral=True)
+            await interaction.response.send_message("You are not part of this match.", ephemeral=True)
             return
         if session.get("status") != "waiting_ready":
-            await interaction.response.send_message("Janela de READY encerrada.", ephemeral=True)
+            await interaction.response.send_message("READY window is closed.", ephemeral=True)
             return
         if interaction.user.id not in session["pending_ids"]:
-            await interaction.response.send_message("Voce ja confirmou READY.", ephemeral=True)
+            await interaction.response.send_message("You have already confirmed READY.", ephemeral=True)
             return
 
         team_key = session["user_team"].get(interaction.user.id)
@@ -923,11 +923,11 @@ class TorneioCog(commands.Cog):
                 except Exception:
                     moved = False
 
-        msg = "READY confirmado."
+        msg = "READY confirmed."
         if moved:
-            msg += " Voce foi movido para sua sala."
+            msg += " You have been moved to your room."
         elif invite_url:
-            msg += f" Entre pela sala do seu time: {invite_url}"
+            msg += f" Join your team's room: {invite_url}"
         await interaction.response.send_message(msg, ephemeral=True)
         await self._update_ready_panel(session_id)
 
@@ -944,32 +944,32 @@ class TorneioCog(commands.Cog):
     async def handle_map_ban(self, interaction: discord.Interaction, session_id: str, map_name: str):
         session = self.sessions.get(session_id)
         if not session:
-            await interaction.response.send_message("Sessao de torneio nao encontrada.", ephemeral=True)
+            await interaction.response.send_message("Tournament session not found.", ephemeral=True)
             return
         if session.get("status") == "map_done":
-            await interaction.response.send_message("Veto finalizado. Aguarde o carregamento da partida.", ephemeral=True)
+            await interaction.response.send_message("Veto finished. Waiting for match load.", ephemeral=True)
             return
         if session.get("status") != "veto":
             logger.warning(
-                f"TORNEIO[{session_id}] clique veto ignorado status={session.get('status')} "
+                f"TOURNAMENT[{session_id}] veto click ignored status={session.get('status')} "
                 f"user={interaction.user.id} map={map_name}"
             )
-            await interaction.response.send_message("Veto nao esta ativo.", ephemeral=True)
+            await interaction.response.send_message("Veto is not active.", ephemeral=True)
             return
 
         user_id = interaction.user.id
         if user_id not in session["captain_ids"].values():
             logger.warning(
-                f"TORNEIO[{session_id}] veto negado user={user_id} nao e capitao"
+                f"TOURNAMENT[{session_id}] veto denied user={user_id} is not captain"
             )
-            await interaction.response.send_message("Apenas os capitaes podem banir/pickar mapas.", ephemeral=True)
+            await interaction.response.send_message("Only captains can ban/pick maps.", ephemeral=True)
             return
 
         if map_name not in session["maps_left"]:
             logger.warning(
-                f"TORNEIO[{session_id}] veto em mapa invalido user={user_id} map={map_name}"
+                f"TOURNAMENT[{session_id}] veto on invalid map user={user_id} map={map_name}"
             )
-            await interaction.response.send_message("Mapa ja foi removido.", ephemeral=True)
+            await interaction.response.send_message("Map has already been removed.", ephemeral=True)
             return
 
         steps = session.get("steps", [])
@@ -979,25 +979,25 @@ class TorneioCog(commands.Cog):
                 await interaction.message.edit(view=None)
             except Exception:
                 pass
-            await interaction.response.send_message("Fluxo de veto ja foi concluido.", ephemeral=True)
+            await interaction.response.send_message("Veto flow has already been completed.", ephemeral=True)
             return
 
         current_action, current_team = steps[step_index]
         expected_captain = int(session["captain_ids"][current_team])
         if user_id != expected_captain:
             logger.warning(
-                f"TORNEIO[{session_id}] veto fora de turno user={user_id} esperado={expected_captain} "
-                f"acao={current_action} team={current_team}"
+                f"TOURNAMENT[{session_id}] veto out of turn user={user_id} expected={expected_captain} "
+                f"action={current_action} team={current_team}"
             )
             await interaction.response.send_message(
-                f"Agora e a vez do capitao de **{current_team}**.",
+                f"It is now the turn of the captain of **{current_team}**.",
                 ephemeral=True,
             )
             return
 
         logger.info(
-            f"TORNEIO[{session_id}] veto aceito user={user_id} team={current_team} "
-            f"acao={current_action} map={map_name} step={step_index+1}/{len(steps)}"
+            f"TOURNAMENT[{session_id}] veto accepted user={user_id} team={current_team} "
+            f"action={current_action} map={map_name} step={step_index+1}/{len(steps)}"
         )
         session["maps_left"].remove(map_name)
         if current_action == "pick":
@@ -1010,12 +1010,12 @@ class TorneioCog(commands.Cog):
             session["status"] = "map_done"
             payload = self._build_match_json(session)
             logger.info(
-                f"TORNEIO[{session_id}] veto finalizado match={session.get('matchid')} "
+                f"TOURNAMENT[{session_id}] veto finished match={session.get('matchid')} "
                 f"maps={payload.get('maplist')}"
             )
             processing = discord.Embed(
-                title="⏳ Finalizando veto...",
-                description="Carregando partida no servidor reservado. Aguarde alguns segundos.",
+                title="⏳ Finishing veto...",
+                description="Loading match on the reserved server. Please wait a few seconds.",
                 color=0xF1C40F,
             )
             processing.set_thumbnail(url=MIX_LOGO_URL)
@@ -1029,7 +1029,7 @@ class TorneioCog(commands.Cog):
                     team2=str(session["team2_name"]),
                 )
             except Exception as e:
-                logger.error(f"Falha ao registrar tournament_matches ({session['matchid']}): {e}")
+                logger.error(f"Failed to register tournament_matches ({session['matchid']}): {e}")
 
             try:
                 await self._execute_tournament_match(session, payload)
@@ -1041,22 +1041,22 @@ class TorneioCog(commands.Cog):
                 if tserver_id and tserver_id in self._reserved_servers:
                     self._reserved_servers.discard(tserver_id)
                 logger.error(
-                    f"TORNEIO[{session_id}] falha ao iniciar match={session.get('matchid')} "
-                    f"server={session.get('tserver_name')} erro={self._compact_response(e)}"
+                    f"TOURNAMENT[{session_id}] failed to start match={session.get('matchid')} "
+                    f"server={session.get('tserver_name')} error={self._compact_response(e)}"
                 )
                 err_txt = self._compact_response(e)
                 fail_embed = discord.Embed(
-                    title="❌ Falha ao iniciar partida",
+                    title="❌ Failed to start match",
                     description=f"`{err_txt}`",
                     color=0xE74C3C,
                 )
-                fail_embed.set_footer(text="Use /cancelartorneio para encerrar e criar novamente.")
+                fail_embed.set_footer(text="Use /cancelartorneio to end and create again.")
                 fail_embed.set_thumbnail(url=MIX_LOGO_URL)
                 await interaction.edit_original_response(embed=fail_embed, view=None)
                 channel = self.bot.get_channel(session.get("text_channel_id", 0))
                 if channel:
                     try:
-                        await channel.send(f"❌ Falha ao iniciar a partida no servidor reservado: `{err_txt}`")
+                        await channel.send(f"❌ Failed to start match on the reserved server: `{err_txt}`")
                     except Exception:
                         pass
                 return
@@ -1068,32 +1068,32 @@ class TorneioCog(commands.Cog):
             conn = (
                 f"connect {host}:{port}; password {password}"
                 if host and port > 0
-                else "Host/porta do runtime nao configurados."
+                else "Runtime host/port not configured."
             )
-            gotv = f"connect {host}:{gotv_port}" if host and gotv_port else "Nao configurado"
+            gotv = f"connect {host}:{gotv_port}" if host and gotv_port else "Not configured"
 
             final_maps_txt = "\n".join([f"- {m}" for m in payload.get("maplist", [])]) or "-"
             embed = discord.Embed(
-                title=f"🏆 Partida de Torneio Pronta #{session['matchid']}",
-                description=f"✅ Série **{session['series'].upper()}** concluída e match carregado.",
+                title=f"🏆 Tournament Match Ready #{session['matchid']}",
+                description=f"✅ Series **{session['series'].upper()}** completed and match loaded.",
                 color=0x2ECC71,
             )
-            embed.add_field(name="⚔️ Modo", value=session["mode"], inline=True)
-            embed.add_field(name="🆚 Confronto", value=f"{session['team1_name']} vs {session['team2_name']}", inline=True)
-            embed.add_field(name="🖥️ Servidor", value=session.get("tserver_name", "-"), inline=True)
+            embed.add_field(name="⚔️ Mode", value=session["mode"], inline=True)
+            embed.add_field(name="🆚 Match", value=f"{session['team1_name']} vs {session['team2_name']}", inline=True)
+            embed.add_field(name="🖥️ Server", value=session.get("tserver_name", "-"), inline=True)
             embed.add_field(name="🗺️ Maplist", value=final_maps_txt, inline=False)
-            embed.add_field(name="🎮 Jogar", value=f"```{conn}```", inline=False)
-            embed.add_field(name="📺 Assistir (GOTV)", value=f"```{gotv}```", inline=False)
+            embed.add_field(name="🎮 Play", value=f"```{conn}```", inline=False)
+            embed.add_field(name="📺 Watch (GOTV)", value=f"```{gotv}```", inline=False)
             embed.set_thumbnail(url=MIX_LOGO_URL)
             await interaction.edit_original_response(embed=embed, view=None)
 
             return
 
         embed = self._build_veto_embed(session)
-        view = TorneioBanView(self, session_id, session["maps_left"])
+        view = TournamentBanView(self, session_id, session["maps_left"])
         await interaction.response.edit_message(embed=embed, view=view)
 
-    @app_commands.command(name="cancelartorneio", description="Cancela um torneio ativo.")
+    @app_commands.command(name="cancelartorneio", description="Cancels an active tournament.")
     async def cancelar_torneio(self, interaction: discord.Interaction):
         ctx = await commands.Context.from_interaction(interaction)
         interaction = getattr(ctx, "interaction", None)
@@ -1107,7 +1107,7 @@ class TorneioCog(commands.Cog):
 
         guild = ctx.guild
         if not guild:
-            await _send("Use este comando dentro do servidor.")
+            await _send("Use this command inside the server.")
             return
 
         session_id = None
@@ -1120,12 +1120,12 @@ class TorneioCog(commands.Cog):
             break
 
         if not session_id:
-            await _send("Nao ha torneio ativo para cancelar.")
+            await _send("No active tournament to cancel.")
             return
 
         session = self.sessions.get(session_id)
         if not session:
-            await _send("Sessao de torneio nao encontrada.")
+            await _send("Tournament session not found.")
             return
 
         try:
@@ -1155,16 +1155,16 @@ class TorneioCog(commands.Cog):
                 pass
 
         await self._release_runtime_server(session, reason="tourney_manual_cancel")
-        await self._move_waiting_players_to_saida(session)
+        await self._move_waiting_players_to_exit(session)
         await self._cleanup_session_resources(session)
         self.sessions.pop(session_id, None)
-        await _send("Torneio cancelado e recursos limpos.")
+        await _send("Tournament cancelled and resources cleaned.")
 
-    @app_commands.command(name="statusservidorestorneio", description="Mostra status dos servidores de torneio (TS1..TS5).")
+    @app_commands.command(name="statusservidorestorneio", description="Shows tournament server status (TS1..TS5).")
     async def status_servidores_torneio(self, interaction: discord.Interaction):
         ctx = await commands.Context.from_interaction(interaction)
         embed = discord.Embed(
-            title="Status dos Servidores de Torneio",
+            title="Tournament Server Status",
             color=0x2ECC71,
             timestamp=discord.utils.utcnow(),
         )
@@ -1186,7 +1186,7 @@ class TorneioCog(commands.Cog):
             sess = active_by_server.get(sid)
             reserved = sid in self._reserved_servers
             busy = bool(item.get("busy")) or reserved or sess is not None
-            status = "?? OCUPADO" if busy else "?? LIVRE"
+            status = "🔴 BUSY" if busy else "🟢 FREE"
 
             host = str(item.get("host") or "-")
             port = int(item.get("port") or 0)
@@ -1203,18 +1203,17 @@ class TorneioCog(commands.Cog):
             elif item.get("match_id"):
                 match_txt = str(item.get("match_id"))
 
-            cfg_txt = "OK" if complete_cfg else "INCOMPLETA"
+            cfg_txt = "OK" if complete_cfg else "INCOMPLETE"
             gotv_txt = str(gotv_port) if gotv_port > 0 else "-"
             lines.append(
                 f"**{sid}** (slot {item.get('slot_id')})\n"
                 f"Status: {status} | Config: `{cfg_txt}`\n"
                 f"Host: `{host}:{port}` | GOTV: `{gotv_txt}`\n"
-                f"Match: `{match_txt}` | Times: {teams_txt}"
+                f"Match: `{match_txt}` | Teams: {teams_txt}"
             )
 
-        embed.description = "\n\n".join(lines) if lines else "Nenhum servidor de torneio configurado."
+        embed.description = "\n\n".join(lines) if lines else "No tournament servers configured."
         await self._reply_ctx(ctx, embed=embed)
-
 
     async def _ready_timeout(self, session_id: str):
         await asyncio.sleep(READY_TIMEOUT_SECONDS)
@@ -1232,42 +1231,42 @@ class TorneioCog(commands.Cog):
         channel = self.bot.get_channel(session["text_channel_id"])
         if channel:
             timeout_embed = discord.Embed(
-                title="❌ Torneio Cancelado",
-                description="Tempo de READY encerrado (10 min).",
+                title="❌ Tournament Cancelled",
+                description="READY time expired (10 min).",
                 color=0xE74C3C,
             )
             timeout_embed.set_thumbnail(url=MIX_LOGO_URL)
-            timeout_embed.set_footer(text="Use /torneio para iniciar novamente.")
+            timeout_embed.set_footer(text="Use /torneio to start again.")
             await self._edit_flow_message(session_id, timeout_embed, None)
 
-        await self._move_waiting_players_to_saida(session)
+        await self._move_waiting_players_to_exit(session)
         await self._cleanup_session_resources(session)
         self.sessions.pop(session_id, None)
 
-    @app_commands.command(name="cadastartime", description="Cria time de torneio e define o capitão.")
+    @app_commands.command(name="cadastartime", description="Creates a tournament team and sets the captain.")
     @app_commands.describe(
-        nome="Nome do time",
-        capitao="Capitão do time",
+        nome="Team name",
+        capitao="Team captain",
     )
     async def cadastrar_time(self, interaction: discord.Interaction, nome: str, capitao: discord.Member):
         ctx = await commands.Context.from_interaction(interaction)
         team = (nome or "").strip()
         if not team:
-            await self._reply_ctx(ctx, "Informe um nome de time valido.")
+            await self._reply_ctx(ctx, "Enter a valid team name.")
             return
 
         captain_steamid = await self._steamid_from_ranking(capitao.id)
         if not captain_steamid:
             await self._reply_ctx(
                 ctx,
-                f"O capitão **{capitao.display_name}** nao possui SteamID valido no cadastro. "
-                "Peça para ele vincular com `/cadastro`."
+                f"Captain **{capitao.display_name}** does not have a valid SteamID on record. "
+                "Ask them to link with `/cadastro`."
             )
             return
 
         existing_captain = await get_tournament_team_captain(team)
         if existing_captain and int(existing_captain.get("discord_id") or 0) != capitao.id:
-            await self._reply_ctx(ctx, f"O time **{team}** já possui capitão cadastrado.")
+            await self._reply_ctx(ctx, f"Team **{team}** already has a registered captain.")
             return
 
         await upsert_tournament_team_player(
@@ -1277,32 +1276,32 @@ class TorneioCog(commands.Cog):
             discord_id=capitao.id,
             is_captain=True,
         )
-        await self._reply_ctx(ctx, f"Time **{team}** criado/atualizado com capitão **{capitao.display_name}**.")
+        await self._reply_ctx(ctx, f"Team **{team}** created/updated with captain **{capitao.display_name}**.")
 
-    @app_commands.command(name="adicionarjogadortime", description="Adiciona jogador a um time já cadastrado.")
+    @app_commands.command(name="adicionarjogadortime", description="Adds a player to an existing team.")
     @app_commands.describe(
-        time="Nome do time",
-        jogador="Jogador para adicionar",
+        time="Team name",
+        jogador="Player to add",
     )
     @app_commands.autocomplete(time=_team_name_autocomplete)
     async def adicionar_jogador_time(self, interaction: discord.Interaction, time: str, jogador: discord.Member):
         ctx = await commands.Context.from_interaction(interaction)
         team = (time or "").strip()
         if not team:
-            await self._reply_ctx(ctx, "Informe um nome de time válido.")
+            await self._reply_ctx(ctx, "Enter a valid team name.")
             return
 
         captain = await get_tournament_team_captain(team)
         if not captain:
-            await self._reply_ctx(ctx, f"O time **{team}** não existe ou ainda não possui capitão. Use `/cadastartime` primeiro.")
+            await self._reply_ctx(ctx, f"Team **{team}** does not exist or has no captain. Use `/cadastartime` first.")
             return
 
         steamid = await self._steamid_from_ranking(jogador.id)
         if not steamid:
             await self._reply_ctx(
                 ctx,
-                f"O jogador **{jogador.display_name}** nao possui SteamID valido no cadastro. "
-                "Peça para ele vincular com `/cadastro`."
+                f"Player **{jogador.display_name}** does not have a valid SteamID on record. "
+                "Ask them to link with `/cadastro`."
             )
             return
 
@@ -1313,61 +1312,61 @@ class TorneioCog(commands.Cog):
             discord_id=jogador.id,
             is_captain=False,
         )
-        await self._reply_ctx(ctx, f"Jogador **{jogador.display_name}** adicionado ao time **{team}**.")
+        await self._reply_ctx(ctx, f"Player **{jogador.display_name}** added to team **{team}**.")
 
-    @app_commands.command(name="removerplayertime", description="Remove um jogador de um time cadastrado.")
+    @app_commands.command(name="removerplayertime", description="Removes a player from a registered team.")
     @app_commands.describe(
-        time="Nome do time",
-        jogador="Jogador para remover",
+        time="Team name",
+        jogador="Player to remove",
     )
     @app_commands.autocomplete(time=_team_name_autocomplete)
     async def remover_player_time(self, interaction: discord.Interaction, time: str, jogador: discord.Member):
         ctx = await commands.Context.from_interaction(interaction)
         team = (time or "").strip()
         if not team:
-            await self._reply_ctx(ctx, "Informe um nome de time válido.")
+            await self._reply_ctx(ctx, "Enter a valid team name.")
             return
 
         players = await get_tournament_team_players(team)
         if not players:
-            await self._reply_ctx(ctx, f"O time **{team}** nao existe.")
+            await self._reply_ctx(ctx, f"Team **{team}** does not exist.")
             return
 
         target = next((p for p in players if int(p.get("discord_id") or 0) == jogador.id), None)
         if not target:
-            await self._reply_ctx(ctx, f"O jogador **{jogador.display_name}** nao esta no time **{team}**.")
+            await self._reply_ctx(ctx, f"Player **{jogador.display_name}** is not in team **{team}**.")
             return
 
         rows = await remove_tournament_team_player(team, jogador.id)
         if rows <= 0:
-            await self._reply_ctx(ctx, "Nao foi possivel remover o jogador (nenhuma linha afetada).")
+            await self._reply_ctx(ctx, "Could not remove the player (no rows affected).")
             return
 
         remaining = await get_tournament_team_players(team)
         if not remaining:
             await self._reply_ctx(
                 ctx,
-                f"Jogador **{jogador.display_name}** removido de **{team}**. "
-                "O time ficou vazio."
+                f"Player **{jogador.display_name}** removed from **{team}**. "
+                "The team is now empty."
             )
             return
 
         captain = next((p for p in remaining if int(p.get("is_captain") or 0) == 1), None)
         if captain:
-            await self._reply_ctx(ctx, f"Jogador **{jogador.display_name}** removido do time **{team}**.")
+            await self._reply_ctx(ctx, f"Player **{jogador.display_name}** removed from team **{team}**.")
         else:
             await self._reply_ctx(
                 ctx,
-                f"Jogador **{jogador.display_name}** removido do time **{team}**.\n"
-                "Atenção: o time ficou sem capitao. Use `/cadastartime` para definir novamente."
+                f"Player **{jogador.display_name}** removed from team **{team}**.\n"
+                "Warning: the team has no captain. Use `/cadastartime` to set one."
             )
 
-    @app_commands.command(name="listatimes", description="Lista os times cadastrados no campeonato.")
+    @app_commands.command(name="listatimes", description="Lists teams registered in the championship.")
     async def lista_times(self, interaction: discord.Interaction):
         ctx = await commands.Context.from_interaction(interaction)
         names = await list_tournament_team_names()
         if not names:
-            await self._reply_ctx(ctx, "Nenhum time cadastrado.")
+            await self._reply_ctx(ctx, "No teams registered.")
             return
 
         guild = ctx.guild
@@ -1375,14 +1374,14 @@ class TorneioCog(commands.Cog):
         for team_name in names:
             players = await get_tournament_team_players(team_name)
             captain = next((p for p in players if int(p.get("is_captain") or 0) == 1), None)
-            captain_label = "Sem capitao"
+            captain_label = "No captain"
             if captain:
                 cap_id = int(captain.get("discord_id") or 0)
                 if guild and cap_id:
                     member = guild.get_member(cap_id)
-                    captain_label = member.mention if member else str(captain.get("players") or "Capitao")
+                    captain_label = member.mention if member else str(captain.get("players") or "Captain")
                 else:
-                    captain_label = str(captain.get("players") or "Capitao")
+                    captain_label = str(captain.get("players") or "Captain")
 
             sorted_players = sorted(
                 players,
@@ -1395,20 +1394,20 @@ class TorneioCog(commands.Cog):
                     group_label = grp
             player_lines = []
             for p in sorted_players:
-                p_name = str(p.get("players") or "Desconhecido")
+                p_name = str(p.get("players") or "Unknown")
                 p_id = int(p.get("discord_id") or 0)
                 p_member = guild.get_member(p_id) if guild and p_id else None
                 p_label = p_member.mention if p_member else p_name
                 if int(p.get("is_captain") or 0) == 1:
-                    p_label = f"{p_label} (Capitao)"
+                    p_label = f"{p_label} (Captain)"
                 player_lines.append(f"- {p_label}")
 
             section = (
                 f"**{team_name}**\n"
-                f"Grupo: {group_label}\n"
-                f"Capitao: {captain_label}\n"
-                f"Jogadores ({len(players)}):\n"
-                f"{chr(10).join(player_lines) if player_lines else '- Nenhum jogador'}"
+                f"Group: {group_label}\n"
+                f"Captain: {captain_label}\n"
+                f"Players ({len(players)}):\n"
+                f"{chr(10).join(player_lines) if player_lines else '- No players'}"
             )
             sections.append(section)
 
@@ -1426,12 +1425,12 @@ class TorneioCog(commands.Cog):
         if chunk:
             await self._reply_ctx(ctx, "\n".join(chunk))
 
-    @app_commands.command(name="definirgrupotime", description="Define grupo (A/B) para um time.")
-    @app_commands.describe(time="Nome do time", grupo="Grupo do time (A ou B)")
+    @app_commands.command(name="definirgrupotime", description="Sets group (A/B) for a team.")
+    @app_commands.describe(time="Team name", grupo="Team group (A or B)")
     @app_commands.choices(
         grupo=[
-            app_commands.Choice(name="Grupo A", value="A"),
-            app_commands.Choice(name="Grupo B", value="B"),
+            app_commands.Choice(name="Group A", value="A"),
+            app_commands.Choice(name="Group B", value="B"),
         ]
     )
     @app_commands.autocomplete(time=_team_name_autocomplete)
@@ -1440,42 +1439,42 @@ class TorneioCog(commands.Cog):
         team = (time or "").strip()
         grp = (grupo or "").strip().upper()
         if not team:
-            await self._reply_ctx(ctx, "Informe um nome de time valido.")
+            await self._reply_ctx(ctx, "Enter a valid team name.")
             return
         if grp not in ("A", "B"):
-            await self._reply_ctx(ctx, "Grupo invalido. Use A ou B.")
+            await self._reply_ctx(ctx, "Invalid group. Use A or B.")
             return
         players = await get_tournament_team_players(team)
         if not players:
-            await self._reply_ctx(ctx, f"O time **{team}** nao existe.")
+            await self._reply_ctx(ctx, f"Team **{team}** does not exist.")
             return
         await set_tournament_team_group(team, grp)
-        await self._reply_ctx(ctx, f"Time **{team}** definido no **Grupo {grp}**.")
+        await self._reply_ctx(ctx, f"Team **{team}** set to **Group {grp}**.")
 
-    @app_commands.command(name="tabelagrupos", description="Publica/atualiza a embed da tabela de grupos.")
+    @app_commands.command(name="tabelagrupos", description="Publishes/updates the group standings embed.")
     async def tabela_grupos(self, interaction: discord.Interaction):
         ctx = await commands.Context.from_interaction(interaction)
         await self._upsert_groups_embed()
         if TOURN_GROUPS_CHANNEL_ID:
-            await self._reply_ctx(ctx, f"Tabela de grupos atualizada em <#{TOURN_GROUPS_CHANNEL_ID}>.")
+            await self._reply_ctx(ctx, f"Group standings updated in <#{TOURN_GROUPS_CHANNEL_ID}>.")
         else:
-            await self._reply_ctx(ctx, "TOURN_GROUPS_CHANNEL_ID nao configurado.")
+            await self._reply_ctx(ctx, "TOURN_GROUPS_CHANNEL_ID not configured.")
 
-    @app_commands.command(name="cronogramajogos", description="Publica/atualiza a embed do cronograma de jogos.")
+    @app_commands.command(name="cronogramajogos", description="Publishes/updates the match schedule embed.")
     async def cronograma_jogos(self, interaction: discord.Interaction):
         ctx = await commands.Context.from_interaction(interaction)
         await self._upsert_schedule_embed()
         if TOURN_SCHEDULE_CHANNEL_ID:
-            await self._reply_ctx(ctx, f"Cronograma de jogos atualizado em <#{TOURN_SCHEDULE_CHANNEL_ID}>.")
+            await self._reply_ctx(ctx, f"Match schedule updated in <#{TOURN_SCHEDULE_CHANNEL_ID}>.")
         else:
-            await self._reply_ctx(ctx, "TOURN_SCHEDULE_CHANNEL_ID nao configurado.")
+            await self._reply_ctx(ctx, "TOURN_SCHEDULE_CHANNEL_ID not configured.")
 
-    @app_commands.command(name="wo", description="Aplica W.O. em uma partida de torneio.")
+    @app_commands.command(name="wo", description="Applies W.O. to a tournament match.")
     @app_commands.describe(
-        matchid="MatchID da partida",
-        vencedor="Time vencedor (W.O.)",
-        perdedor="Time perdedor (W.O.)",
-        serie="Serie da partida (se precisar criar no banco)",
+        matchid="Match ID",
+        vencedor="Winning team (W.O.)",
+        perdedor="Losing team (W.O.)",
+        serie="Match series (if needed to create in DB)",
     )
     @app_commands.choices(
         serie=[
@@ -1499,19 +1498,19 @@ class TorneioCog(commands.Cog):
         loser = str(perdedor or "").strip()
         series = str(serie or "md1").strip().lower()
         if not mid:
-            await self._reply_ctx(ctx, "Informe um matchid valido.")
+            await self._reply_ctx(ctx, "Enter a valid matchid.")
             return
         if not winner:
-            await self._reply_ctx(ctx, "Informe o nome do time vencedor.")
+            await self._reply_ctx(ctx, "Enter the winning team name.")
             return
         if not loser:
-            await self._reply_ctx(ctx, "Informe o nome do time perdedor.")
+            await self._reply_ctx(ctx, "Enter the losing team name.")
             return
         if winner == loser:
-            await self._reply_ctx(ctx, "Vencedor e perdedor nao podem ser o mesmo time.")
+            await self._reply_ctx(ctx, "Winner and loser cannot be the same team.")
             return
         if series not in ("md1", "md3", "md5"):
-            await self._reply_ctx(ctx, "Serie invalida. Use md1, md3 ou md5.")
+            await self._reply_ctx(ctx, "Invalid series. Use md1, md3 or md5.")
             return
 
         match = await get_tournament_match_by_id(mid)
@@ -1520,10 +1519,10 @@ class TorneioCog(commands.Cog):
             winner_players = await get_tournament_team_players(winner)
             loser_players = await get_tournament_team_players(loser)
             if not winner_players:
-                await self._reply_ctx(ctx, f"O time vencedor **{winner}** nao existe em tournament_teams.")
+                await self._reply_ctx(ctx, f"The winning team **{winner}** does not exist in tournament_teams.")
                 return
             if not loser_players:
-                await self._reply_ctx(ctx, f"O time perdedor **{loser}** nao existe em tournament_teams.")
+                await self._reply_ctx(ctx, f"The losing team **{loser}** does not exist in tournament_teams.")
                 return
 
             winner_size = len(winner_players)
@@ -1531,8 +1530,8 @@ class TorneioCog(commands.Cog):
             if winner_size != loser_size or winner_size not in (1, 2, 5):
                 await self._reply_ctx(
                     ctx,
-                    "Nao foi possivel inferir o modo automaticamente. "
-                    "Garanta que os dois times tenham o mesmo tamanho (1, 2 ou 5 jogadores).",
+                    "Could not infer mode automatically. "
+                    "Make sure both teams have the same size (1, 2 or 5 players).",
                 )
                 return
 
@@ -1547,7 +1546,7 @@ class TorneioCog(commands.Cog):
             match = await get_tournament_match_by_id(mid)
             created = True
             if not match:
-                await self._reply_ctx(ctx, f"Falha ao criar a partida `{mid}` em tournament_matches.")
+                await self._reply_ctx(ctx, f"Failed to create match `{mid}` in tournament_matches.")
                 return
 
         team1 = str(match.get("team1") or "").strip()
@@ -1555,14 +1554,14 @@ class TorneioCog(commands.Cog):
         if winner not in (team1, team2) or loser not in (team1, team2):
             await self._reply_ctx(
                 ctx,
-                f"Times invalidos para essa partida. Times da partida: **{team1}** e **{team2}**.",
+                f"Invalid teams for this match. Match teams: **{team1}** and **{team2}**.",
             )
             return
         if not ((winner == team1 and loser == team2) or (winner == team2 and loser == team1)):
             await self._reply_ctx(
                 ctx,
-                f"Para o match `{mid}` os times precisam ser exatamente: "
-                f"vencedor/perdedor entre **{team1}** e **{team2}**.",
+                f"For match `{mid}` the teams must be exactly: "
+                f"winner/loser between **{team1}** and **{team2}**.",
             )
             return
 
@@ -1579,18 +1578,18 @@ class TorneioCog(commands.Cog):
             result_type="WO",
         )
         if rows <= 0:
-            await self._reply_ctx(ctx, "Nao foi possivel aplicar o W.O. (nenhuma linha alterada).")
+            await self._reply_ctx(ctx, "Could not apply W.O. (no rows affected).")
             return
 
-        created_txt = "Partida criada e " if created else ""
+        created_txt = "Match created and " if created else ""
         await self._reply_ctx(
             ctx,
-            f"{created_txt}W.O. aplicado na partida `{mid}`.\n"
-            f"Vencedor: **{winner}** | Perdedor: **{loser}**\n"
-            f"Placar registrado: **{team1} {score1}x{score2} {team2}**",
+            f"{created_txt}W.O. applied for match `{mid}`.\n"
+            f"Winner: **{winner}** | Loser: **{loser}**\n"
+            f"Score registered: **{team1} {score1}x{score2} {team2}**",
         )
 
-    @app_commands.command(name="torneio", description="Cria uma partida de torneio com READY e veto/picks de mapas.")
+    @app_commands.command(name="torneio", description="Creates a tournament match with READY and map veto/picks.")
     @app_commands.choices(
         modo=[
             app_commands.Choice(name="1x1", value="1x1"),
@@ -1598,7 +1597,7 @@ class TorneioCog(commands.Cog):
             app_commands.Choice(name="5x5", value="5x5"),
         ],
         servidor=[
-            app_commands.Choice(name="Auto (primeiro livre)", value="auto"),
+            app_commands.Choice(name="Auto (first available)", value="auto"),
             app_commands.Choice(name="TS1", value="tserver1"),
             app_commands.Choice(name="TS2", value="tserver2"),
             app_commands.Choice(name="TS3", value="tserver3"),
@@ -1607,11 +1606,11 @@ class TorneioCog(commands.Cog):
         ],
     )
     @app_commands.describe(
-        modo="Modalidade",
-        serie="Formato da serie",
-        team1="Nome do time 1",
-        team2="Nome do time 2",
-        servidor="Servidor de torneio (TS1..TS5) ou Auto",
+        modo="Mode",
+        serie="Series format",
+        team1="Team 1 name",
+        team2="Team 2 name",
+        servidor="Tournament server (TS1..TS5) or Auto",
     )
     @app_commands.autocomplete(team1=_team_name_autocomplete, team2=_team_name_autocomplete, serie=_serie_autocomplete)
     async def torneio(self, interaction: discord.Interaction, modo: str, serie: str, team1: str, team2: str, servidor: str = "auto"):
@@ -1627,66 +1626,66 @@ class TorneioCog(commands.Cog):
 
         guild = ctx.guild
         if not guild:
-            await _send("Use este comando dentro do servidor.")
+            await _send("Use this command inside the server.")
             return
         if TORNEIO_PICKS_BANS_CHANNEL_ID <= 0:
-            await _send("TORNEIO_PICKS_BANS_CHANNEL_ID nao configurado.")
+            await _send("TORNEIO_PICKS_BANS_CHANNEL_ID not configured.")
             return
         if not ctx.channel or ctx.channel.id != TORNEIO_PICKS_BANS_CHANNEL_ID:
             picks_channel = guild.get_channel(TORNEIO_PICKS_BANS_CHANNEL_ID)
             target = picks_channel.mention if picks_channel else f"<#{TORNEIO_PICKS_BANS_CHANNEL_ID}>"
-            await _send(f"Este comando so pode ser usado em {target}.")
+            await _send(f"This command can only be used in {target}.")
             return
         if TORNEIO_CATEGORY_ID <= 0:
-            await _send("TORNEIO_CATEGORY_ID nao configurado.")
+            await _send("TORNEIO_CATEGORY_ID not configured.")
             return
         fixed_category = guild.get_channel(TORNEIO_CATEGORY_ID)
         if not fixed_category or not isinstance(fixed_category, discord.CategoryChannel):
-            await _send("Categoria fixa do torneio nao encontrada.")
+            await _send("Fixed tournament category not found.")
             return
         picks_bans_channel = guild.get_channel(TORNEIO_PICKS_BANS_CHANNEL_ID)
         if not picks_bans_channel or not isinstance(picks_bans_channel, discord.TextChannel):
-            await _send("Canal fixo de picks/bans nao encontrado.")
+            await _send("Fixed picks/bans channel not found.")
             return
         if team1 == team2:
-            await _send("Selecione dois times diferentes.")
+            await _send("Select two different teams.")
             return
 
         size = self._mode_size(modo)
         if not size:
-            await _send("Modo invalido. Use 1x1, 2x2 ou 5x5.")
+            await _send("Invalid mode. Use 1x1, 2x2 or 5x5.")
             return
 
         serie = (serie or "").lower().strip()
         allowed_series = self._allowed_series_for_mode(modo)
         if serie not in allowed_series:
             allowed_txt = ", ".join(allowed_series) if allowed_series else "md1"
-            await _send(f"Serie invalida para {modo}. Opcoes: {allowed_txt}.")
+            await _send(f"Invalid series for {modo}. Options: {allowed_txt}.")
             return
 
         team1_players = await get_tournament_team_players(team1)
         team2_players = await get_tournament_team_players(team2)
         if len(team1_players) != size:
-            await _send(f"O time **{team1}** precisa ter exatamente {size} jogador(es).")
+            await _send(f"Team **{team1}** must have exactly {size} player(s).")
             return
         if len(team2_players) != size:
-            await _send(f"O time **{team2}** precisa ter exatamente {size} jogador(es).")
+            await _send(f"Team **{team2}** must have exactly {size} player(s).")
             return
 
         captain1 = next((p for p in team1_players if int(p.get("is_captain") or 0) == 1), None)
         captain2 = next((p for p in team2_players if int(p.get("is_captain") or 0) == 1), None)
         if not captain1 or not captain2:
-            await _send("Ambos os times precisam ter capitao definido via `/cadastartime`.")
+            await _send("Both teams need a captain set via `/cadastartime`.")
             return
 
         pool_preview = self._map_pool_for_mode(modo)
         if serie == "md3":
             needed = 4 if modo == "2x2" else 7
             if len(pool_preview) < needed:
-                await _send(f"MD3 em {modo} exige pool com ao menos {needed} mapas.")
+                await _send(f"MD3 in {modo} requires a pool of at least {needed} maps.")
                 return
         if serie == "md5" and len(pool_preview) < 7:
-            await _send("MD5 exige pool com ao menos 7 mapas.")
+            await _send("MD5 requires a pool of at least 7 maps.")
             return
 
         team1_ids = [int(p["discord_id"]) for p in team1_players]
@@ -1695,18 +1694,18 @@ class TorneioCog(commands.Cog):
 
         missing = [uid for uid in all_ids if guild.get_member(uid) is None]
         if missing:
-            await _send("Alguns jogadores cadastrados nao estao neste servidor. Ajuste os cadastros.")
+            await _send("Some registered players are not in this server. Adjust registrations.")
             return
 
         picked, pick_error = await self._pick_tournament_server(servidor)
         if not picked:
-            await _send(pick_error or "Nao foi possivel selecionar servidor de torneio.")
+            await _send(pick_error or "Could not select a tournament server.")
             return
         tserver_id = picked
         self._reserved_servers.add(tserver_id)
 
         session_id = str(int(time.time()))
-        # MatchZy exige inteiro (int32). Unix timestamp cabe e evita overflow.
+        # MatchZy requires int32. Unix timestamp fits and avoids overflow.
         matchid = int(time.time())
         match_password = str(secrets.randbelow(900000) + 100000)
 
@@ -1767,14 +1766,14 @@ class TorneioCog(commands.Cog):
                         send_messages=False,
                         add_reactions=False,
                         read_message_history=True,
-                        reason="Torneio: somente interacao com bot",
+                        reason="Tournament: bot interaction only",
                     )
                     text_overwrite_user_ids.append(uid)
                 except Exception:
                     pass
         except Exception as e:
             self._reserved_servers.discard(tserver_id)
-            await _send(f"Nao foi possivel criar a estrutura do confronto: `{self._compact_response(e)}`")
+            await _send(f"Could not create match structure: `{self._compact_response(e)}`")
             return
 
         session = {
@@ -1809,7 +1808,7 @@ class TorneioCog(commands.Cog):
                 team1: {
                     "name": (guild.get_member(int(captain1["discord_id"])) or None).display_name
                     if guild.get_member(int(captain1["discord_id"]))
-                    else str(captain1.get("players") or "Capitao"),
+                    else str(captain1.get("players") or "Captain"),
                     "avatar": str((guild.get_member(int(captain1["discord_id"])) or None).display_avatar.url)
                     if guild.get_member(int(captain1["discord_id"]))
                     else None,
@@ -1817,7 +1816,7 @@ class TorneioCog(commands.Cog):
                 team2: {
                     "name": (guild.get_member(int(captain2["discord_id"])) or None).display_name
                     if guild.get_member(int(captain2["discord_id"]))
-                    else str(captain2.get("players") or "Capitao"),
+                    else str(captain2.get("players") or "Captain"),
                     "avatar": str((guild.get_member(int(captain2["discord_id"])) or None).display_avatar.url)
                     if guild.get_member(int(captain2["discord_id"]))
                     else None,
@@ -1831,7 +1830,7 @@ class TorneioCog(commands.Cog):
         ready_panel_embed = self._build_ready_panel_embed(session)
         ready_panel = await picks_bans_channel.send(
             embed=ready_panel_embed,
-            view=TorneioReadyOpenView(self, session_id),
+            view=TournamentReadyOpenView(self, session_id),
         )
         session["ready_panel_message_id"] = ready_panel.id
 
@@ -1839,13 +1838,13 @@ class TorneioCog(commands.Cog):
 
         if interaction:
             await interaction.followup.send(
-                f"Torneio criado: **{team1} vs {team2}** | MatchID `{matchid}`. "
-                "Acompanhe no painel de READY no canal de picks/bans.",
+                f"Tournament created: **{team1} vs {team2}** | MatchID `{matchid}`. "
+                "Check the READY panel in the picks/bans channel.",
                 ephemeral=True,
             )
         else:
-            await ctx.send(f"Torneio criado com MatchID `{matchid}`. Confira o painel no canal de picks/bans.")
+            await ctx.send(f"Tournament created with MatchID `{matchid}`. Check the panel in the picks/bans channel.")
 
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(TorneioCog(bot))
+    await bot.add_cog(TournamentCog(bot))

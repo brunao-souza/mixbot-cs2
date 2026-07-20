@@ -9,7 +9,7 @@ from bot.config import DB_CONFIG
 MIX_MATCH_ID_OUTLIER_FLOOR = 1_000_000_000
 
 class Database:
-    """Gerenciador de conex?es MySQL com pool"""
+    """MySQL connection pool manager"""
 
     def __init__(self):
         self.pool: Optional[aiomysql.Pool] = None
@@ -45,7 +45,7 @@ class Database:
         return False
 
     async def connect(self):
-        """Cria o connection pool"""
+        """Creates the connection pool"""
         async with self._conn_lock:
             if not self._pool_unusable():
                 return
@@ -63,10 +63,10 @@ class Database:
                     minsize=2,
                     maxsize=10,
                 )
-                logger.info("\u2705 Connection pool MySQL criado com sucesso")
+                logger.info("\u2705 MySQL connection pool created successfully")
                 await ensure_tables()
             except Exception as e:
-                logger.error(f"\u274C Erro ao conectar ao MySQL: {e}")
+                logger.error(f"\u274C Error connecting to MySQL: {e}")
                 raise
 
     async def close(self):
@@ -76,7 +76,7 @@ class Database:
                 self.pool.close()
                 await self.pool.wait_closed()
                 self.pool = None
-                logger.info("\U0001F6D1 Connection pool MySQL fechado")
+                logger.info("\U0001F6D1 MySQL connection pool closed")
 
     async def _reconnect(self):
         async with self._conn_lock:
@@ -145,10 +145,10 @@ class Database:
 
         return await self._run_with_retry(_do)
 
-# Instância global
+# Global instance
 db = Database()
 
-# ================= FUNÇÕES DE FILA =================
+# ================= QUEUE FUNCTIONS =================
 
 async def save_queue_member(
     discord_id: int,
@@ -156,7 +156,7 @@ async def save_queue_member(
     damage: int = 0,
     priority_awarded_at: Optional[datetime] = None,
 ):
-    """Salva/atualiza um jogador na fila com timestamp, dano e carimbo da prioridade de vencedor."""
+    """Saves/updates a player in the queue with timestamp, damage, and winner priority timestamp."""
     joined_value = joined_at or datetime.utcnow()
     dmg_value = int(damage or 0)
     priority_value = priority_awarded_at.replace(tzinfo=None) if priority_awarded_at else None
@@ -171,7 +171,7 @@ async def save_queue_member(
     await db.execute(query, (int(discord_id), joined_value.replace(tzinfo=None), dmg_value, priority_value))
 
 async def remove_queue_member(discord_id: int):
-    """Remove um jogador da fila"""
+    """Removes a player from the queue"""
     query = "DELETE FROM waiting_queue WHERE discord_id = %s"
     await db.execute(query, (int(discord_id),))
 
@@ -181,7 +181,7 @@ async def set_queue_member_damage(discord_id: int, damage: int):
     await db.execute(query, (int(damage or 0), int(discord_id)))
 
 async def get_saved_queue():
-    """Busca a fila salva ordenada por tempo"""
+    """Fetches the saved queue ordered by time"""
     query = """
         SELECT
             discord_id,
@@ -193,7 +193,7 @@ async def get_saved_queue():
     """
     return await db.fetchall(query)
 
-# ================= FUNCOES DE TIMES (TORNEIO) =================
+# ================= TEAM FUNCTIONS (TOURNAMENT) =================
 
 async def upsert_tournament_team_player(
     team_name: str,
@@ -411,10 +411,10 @@ async def upsert_tournament_match(matchid: str, mode: str, series: str, team1: s
     """
     await db.execute(query, (matchid, mode, series, team1, team2))
 
-# ================= FUNÇÕES DE RANKING =================
+# ================= RANKING FUNCTIONS =================
 
 async def register_player(discord_id: int, steamid64: str, nickname: str) -> Optional[Dict]:
-    """Cria cadastro do jogador em players e ranking."""
+    """Creates player registration in players and ranking tables."""
     nick = str(nickname or "").strip()
     sid = str(steamid64 or "").strip()
     did = int(discord_id)
@@ -484,7 +484,7 @@ async def is_nickname_in_use(nickname: str, exclude_discord_id: int | None = Non
 
 
 async def update_player_nickname(discord_id: int, nickname: str) -> bool:
-    """Atualiza nickname do player em players e ranking."""
+    """Updates player nickname in players and ranking tables."""
     nick = str(nickname or "").strip()
     did = int(discord_id)
     if not nick:
@@ -512,7 +512,7 @@ async def update_player_nickname(discord_id: int, nickname: str) -> bool:
     return True
 
 async def get_player_rank(discord_id: int) -> Optional[Dict]:
-    """Busca dados individuais (identidade + ranking + W/L)."""
+    """Fetches individual player data (identity + ranking + W/L)."""
     query = """
         SELECT
             p.id,
@@ -559,7 +559,7 @@ async def add_rank_points(discord_id: int, points: int) -> int:
     return await db.execute(query, (int(player["id"]), str(player.get("nickname") or ""), int(points)))
 
 async def get_top_ranking(limit: int = 20) -> List[Dict]:
-    """Busca o ranking global."""
+    """Fetches the global ranking."""
     query = """
         SELECT
             p.discord_id,
@@ -580,7 +580,7 @@ async def get_top_ranking(limit: int = 20) -> List[Dict]:
     return await db.fetchall(query, (int(limit),))
 
 async def get_player_stats(steamid64: str, start_date: Optional[str] = None) -> Dict:
-    """Busca estatísticas acumuladas do MatchZy"""
+    """Fetches accumulated MatchZy statistics"""
     query = """
         SELECT
             COUNT(*) AS total_matches,
@@ -613,7 +613,7 @@ async def get_player_stats(steamid64: str, start_date: Optional[str] = None) -> 
     return result or {}
 
 async def get_player_history(steamid64: str, limit: int = 10, start_date: Optional[str] = None) -> List[Dict]:
-    """Busca histórico de partidas"""
+    """Fetches match history"""
     query = """
         SELECT
             p.matchid, p.team, p.kills, p.deaths, p.assists, p.damage,
@@ -645,7 +645,7 @@ async def get_player_history(steamid64: str, limit: int = 10, start_date: Option
     return await db.fetchall(query, tuple(params))
 
 async def update_ranks(match_id: int):
-    """Atualiza o ranking apos uma partida."""
+    """Updates the ranking after a match."""
     # Sync Bridge: DESATIVADO — imports removidos
     # import asyncio as _asyncio
     # from bot.sync_bridge import sync_match_result as _sync_match_result
@@ -713,13 +713,13 @@ async def update_ranks(match_id: int):
             """
             await db.execute(update_player_query, (int(w), int(l), int(w), int(player_row["id"])))
     except Exception as e:
-        logger.error(f"Erro ao atualizar ranking: {e}")
+        logger.error(f"Error updating ranking: {e}")
         return
 
     # Sync Bridge: DESATIVADO — webapp usa projectmix direto
     # _asyncio.ensure_future(_sync_match_result(match_id, db))
 
-# ================= AUXILIARES DE PARTIDA =================
+# ================= MATCH HELPERS =================
 
 async def get_match_details(match_id: int) -> Optional[Dict]:
     query = """
@@ -748,7 +748,7 @@ async def get_match_players(match_id: int) -> List[Dict]:
 
 async def get_player_team_in_match(match_id: int, steamid64: str) -> Optional[str]:
     """
-    Retorna "team1" ou "team2" para o player em um match, ou None se não achar.
+    Returns "team1" or "team2" for the player in a match, or None if not found.
     """
     query = """
         SELECT p.team, m.team1_name, m.team2_name
@@ -768,7 +768,7 @@ async def get_player_team_in_match(match_id: int, steamid64: str) -> Optional[st
     return None
 
 async def get_last_match() -> Optional[Dict]:
-    """Busca a última partida (Sem IP para evitar erro)"""
+    """Fetches the last match (no IP to avoid errors)"""
     query = """
         SELECT m.matchid, m.team1_name, m.team2_name, m.team1_score as win1, m.team2_score as win2,
                mp.mapname, mp.team1_score, mp.team2_score
@@ -964,7 +964,7 @@ async def reserve_match_id(server_id: str) -> int:
             break
         await asyncio.sleep(0.2)
     if not got_lock:
-        logger.warning("Nao foi possivel obter lock; tentando reserva otimista de matchid.")
+        logger.warning("Could not obtain lock; trying optimistic matchid reservation.")
     try:
         candidate = await _get_first_free_match_id_hint()
         if candidate < 1:
@@ -1108,7 +1108,7 @@ async def ensure_tables():
         if await table_exists(legacy_name):
             legacy_name = f"ranking_legacy_backup_{int(time.time())}"
         await db.execute(f"RENAME TABLE ranking TO {legacy_name}")
-        logger.warning(f"Tabela ranking legada detectada e renomeada para {legacy_name}. Recadastro obrigatorio.")
+        logger.warning(f"Legacy ranking table detected and renamed to {legacy_name}. Re-registration required.")
 
     if not await table_exists("players"):
         query = """
@@ -1181,7 +1181,7 @@ async def ensure_tables():
                     "ALTER TABLE ranking ADD CONSTRAINT fk_ranking_player FOREIGN KEY (id) REFERENCES players(id) ON DELETE CASCADE"
                 )
             except Exception as e:
-                logger.warning(f"Nao foi possivel criar FK fk_ranking_player: {e}")
+                logger.warning(f"Could not create FK fk_ranking_player: {e}")
 
     if not await table_exists("welcome_messages"):
         query = """
@@ -1439,7 +1439,7 @@ async def set_active_match(server_id: str, match_id: int) -> bool:
     )
     if existing and existing.get("server_id") != server_id:
         logger.warning(
-            f"active_matches: match_id {match_id} ja em uso por {existing.get('server_id')}; ignorando para {server_id}"
+            f"active_matches: match_id {match_id} already in use by {existing.get('server_id')}; ignoring for {server_id}"
         )
         return False
     query = """
@@ -1809,14 +1809,14 @@ async def get_matchguardian_notconnect_rows(
     params: List = [str(matchid or "")]
     if since_utc is not None:
         base_query += " AND created_at >= %s"
-        # MySQL DATETIME normalmente e salvo sem timezone.
+        # MySQL DATETIME is normally saved without timezone.
         params.append(since_utc.replace(tzinfo=None))
     base_query += " ORDER BY id DESC LIMIT %s"
     params.append(max(1, int(limit)))
     try:
         return await db.fetchall(base_query, tuple(params))
     except Exception as e:
-        # Tolerancia para bancos novos sem a tabela ainda provisionada.
+        # Tolerance for new databases without the table yet provisioned.
         text = str(e).lower()
         if "1146" in text and "matchguardian_notconnect" in text:
             return []
@@ -1832,7 +1832,7 @@ async def get_active_match_by_server(server_ip=None):
     """
     return await db.fetchone(sql)
 
-# ================= FEEDBACK/REPORT DE PARTIDA =================
+# ================= MATCH FEEDBACK/REPORT =================
 
 async def is_player_in_match(match_id: int, discord_id: int) -> bool:
     query = """

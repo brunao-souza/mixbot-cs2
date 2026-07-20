@@ -6,13 +6,13 @@ from bot.config import STEAM_API_KEY
 
 async def get_steam_profile(steamid64: str) -> Optional[Dict]:
     """
-    Busca perfil do Steam via API
+    Fetches Steam profile via API
     
     Args:
-        steamid64: SteamID64 do jogador
+        steamid64: Player's SteamID64
     
     Returns:
-        Dict com 'nickname' e 'avatar' ou None se não encontrado
+        Dict with 'nickname' and 'avatar' or None if not found
     """
     url = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
     params = {
@@ -24,14 +24,14 @@ async def get_steam_profile(steamid64: str) -> Optional[Dict]:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
                 if response.status != 200:
-                    logger.error(f"❌ Steam API retornou status {response.status}")
+                    logger.error(f"❌ Steam API returned status {response.status}")
                     return None
                 
                 data = await response.json()
                 players = data.get("response", {}).get("players", [])
                 
                 if not players:
-                    logger.warning(f"⚠️ SteamID {steamid64} não encontrado")
+                    logger.warning(f"⚠️ SteamID {steamid64} not found")
                     return None
                 
                 player = players[0]
@@ -41,22 +41,22 @@ async def get_steam_profile(steamid64: str) -> Optional[Dict]:
                 }
     
     except aiohttp.ClientError as e:
-        logger.error(f"❌ Erro ao conectar à Steam API: {e}")
+        logger.error(f"❌ Error connecting to Steam API: {e}")
         return None
     except Exception as e:
-        logger.error(f"❌ Erro inesperado na Steam API: {e}")
+        logger.error(f"❌ Unexpected error in Steam API: {e}")
         return None
 
 
 def validate_steamid64(steamid: str) -> bool:
     """
-    Valida formato de SteamID64
+    Validates SteamID64 format
     
     Args:
-        steamid: String para validar
+        steamid: String to validate
     
     Returns:
-        True se válido, False caso contrário
+        True if valid, False otherwise
     """
     return (
         steamid.isdigit() 

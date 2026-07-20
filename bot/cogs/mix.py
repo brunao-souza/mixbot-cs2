@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from datetime import datetime
 import copy
 
-# Imports do Banco de Dados
+# Database Imports
 from bot.database import (
     get_player_rank, get_match_overview,
     set_active_match, clear_active_match, get_active_matches,
@@ -22,7 +22,7 @@ from bot.database import (
     get_match_runtime_server,
 )
 
-# Imports de Configuração
+# Configuration Imports
 from bot.config import (
     SERVERS, CANAL_MONITOR_ID, CANAL_LOGS_ID, CANAL_APOIO_ID,
     MEMBER_ROLE_ID, MEMBER_ROLE_NAME, SALA_PROXIMO_ID, SALA_SAIDA_ID, MIX_ACCEPT_TIMEOUT, CAPTAIN_VOTE_TIMEOUT, MAP_VETO_TIMEOUT, MAP_VETO_FINAL_TIMEOUT, DEMO_UPLOAD_URL,
@@ -32,13 +32,13 @@ from bot.config import (
 from bot.utils.cs2 import send_rcon
 from bot.cogs.monitor import update_monitor_combined
 from bot.cogs.bemvindo import send_welcome_if_needed, sync_member_role_if_registered
-from bot.cogs.fila import get_fila_cog
+from bot.cogs.fila import get_queue_cog
 from bot.utils.faceit_api import get_faceit_profile
 from bot.utils.steam_api import validate_steamid64
 from bot.utils.mix_lobby import pick_free_lobby_server
 from bot.utils.server_pool import get_server_pool, NoServerAvailableError
 
-# SteamID64 opcional para manter liberado como espectador/admin.
+# Optional SteamID64 to keep allowed as spectator/admin.
 ALWAYS_ALLOW_STEAMID64 = MATCHZY_ADMIN_STEAMID64
 APOIO_PUBLI_SECONDS = 10
 TORNEIO_PUBLI_SECONDS = 20
@@ -47,7 +47,7 @@ TORNEIO_BANNER_URL = "https://cdn.discordapp.com/attachments/1452985230565834804
 MIX_CHANNEL_CLEANUP_DELAY_SECONDS = 120
 MIX_CHANNEL_CLEANUP_HISTORY_LIMIT = 300
 
-# ================= ESTRUTURA DE SESSÃO =================
+# ================= SESSION STRUCTURE =================
 DEFAULT_SESSION_STATE = {
     "active": False, "status": "IDLE", "players": [], "player_ratings": {},
     "player_rank_positions": {},
@@ -73,11 +73,11 @@ DEFAULT_SESSION_STATE = {
     "runtime_port": None,
     "runtime_gotv_port": None,
     "runtime_already_online": False,
-    # Fase atual da partida (atualizado via webhooks do MatchZy)
+    # Current match phase (updated via MatchZy webhooks)
     "match_phase": None,       # "knife" | "halftime" | "overtime" | "paused" | None
-    "match_overtime_num": 0,   # número da overtime (1, 2, ...)
-    "match_pause_team": None,  # time que pediu pausa
-    "match_round_num": 0,      # round atual
+    "match_overtime_num": 0,   # overtime number (1, 2, ...)
+    "match_pause_team": None,  # team that requested pause
+    "match_round_num": 0,      # current round
     "match_round_mvp": None,   # {"name": str, "kills": int, "damage": int}
 }
 
@@ -125,7 +125,7 @@ def _spawn_background_task(coro, label: str):
         except asyncio.CancelledError:
             return
         except Exception as exc:
-            logger.error(f"\u274C Task em background falhou ({label}): {exc}")
+            logger.error(f"\u274C Background task failed ({label}): {exc}")
 
     task.add_done_callback(_done_callback)
     return task
@@ -224,7 +224,7 @@ async def _sync_server_channel_access(bot, s_id: str, visible: bool, reason: str
     guild = category.guild
     member_role = _get_member_role(guild)
     if member_role is None:
-        logger.warning(f"Cargo MEMBRO nao encontrado ao sincronizar permissoes do servidor {s_id}")
+        logger.warning(f"Member role not found when syncing permissions for server {s_id}")
         return False
 
     target_view = bool(visible)
@@ -348,7 +348,7 @@ async def _cleanup_mix_text_channel(
         except discord.HTTPException:
             continue
     if deleted > 0:
-        logger.info(f"MIX_CLEANUP: canal={channel.id} removidas={deleted}")
+        logger.info(f"MIX_CLEANUP: channel={channel.id} deleted={deleted}")
 
 
 def _schedule_mix_text_channel_cleanup(channel: discord.abc.GuildChannel | discord.Thread) -> None:
@@ -392,11 +392,11 @@ async def set_server_category_visibility(bot, s_id: str, visible: bool, reason: 
         try:
             changed = await _sync_server_channel_access(bot, s_id, bool(visible), reason=reason)
             logger.debug(
-                f"Categoria {s_id} visibilidade -> {bool(visible)} ({reason or 'auto'}) changed={changed}"
+                f"Category {s_id} visibility -> {bool(visible)} ({reason or 'auto'}) changed={changed}"
             )
             return changed
         except Exception as exc:
-            logger.warning(f"Falha ao alterar visibilidade da categoria {s_id}: {exc}")
+            logger.warning(f"Failed to change visibility for category {s_id}: {exc}")
             return False
 
 
@@ -445,7 +445,7 @@ def reset_session(s_id):
         except:
             pass
         sessions[s_id] = copy.deepcopy(DEFAULT_SESSION_STATE)
-        logger.debug(f"\U0001F504 Sessao {s_id} resetada.")
+        logger.debug(f"\U0001F504 Session {s_id} reset.")
         try:
             _spawn_background_task(clear_active_match(s_id), f"clear_active_match:{s_id}")
             _spawn_background_task(clear_active_session(s_id), f"clear_active_session:{s_id}")
@@ -466,7 +466,7 @@ def reset_session(s_id):
         except:
             pass
 
-# ================= HELPERS TÉCNICOS =================
+# ================= TECHNICAL HELPERS =================
 
 def parse_rcon_value(rcon_output):
     if not rcon_output: return "0"
@@ -486,7 +486,7 @@ def parse_rcon_string(rcon_output):
 def parse_match_teams_from_hostname(hostname: str):
     if not hostname:
         return None, None
-    # Esperado: "... | TEAM1 vs TEAM2"
+    # Expected: "... | TEAM1 vs TEAM2"
     match = re.search(r'\|\s*(.+?)\s+vs\s+(.+)$', hostname)
     if not match:
         return None, None
@@ -560,8 +560,8 @@ def clean_name(name: str) -> str:
 
 def normalize_match_player_name(name: str, fallback: str = "Player") -> str:
     """
-    Nome do player dentro do JSON do MatchZy.
-    Mantem caracteres de nickname (ex.: -, ^, ç, ã) e remove apenas controles.
+    Player name from MatchZy JSON.
+    Keeps nickname characters (e.g.: -, ^, ç, ã) and only removes control chars.
     """
     raw = str(name or "").strip()
     if not raw:
@@ -569,7 +569,7 @@ def normalize_match_player_name(name: str, fallback: str = "Player") -> str:
     if not raw:
         raw = "Player"
     raw = re.sub(r"[\r\n\t]+", " ", raw)
-    # Evita caracteres que costumam quebrar parser/console do MatchZy.
+    # Avoid characters that commonly break MatchZy parser/console.
     raw = raw.replace("\\", "").replace('"', "").replace("'", "").replace("`", "")
     raw = " ".join(raw.split())
     return raw[:32]
@@ -578,7 +578,7 @@ def normalize_match_player_name(name: str, fallback: str = "Player") -> str:
 def _compact_rcon_error(resp, max_len: int = 220) -> str:
     text = str(resp or "").strip()
     if not text:
-        return "sem resposta"
+        return "no response"
     first_line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
     if not first_line:
         first_line = text.replace("\n", " ").strip()
@@ -595,7 +595,7 @@ async def safe_move_member(member: discord.Member, channel: Optional[discord.abc
         await member.move_to(channel)
     except Exception as exc:
         # Common race: user disconnects from voice before move.
-        logger.warning(f"VOICE move falhou ({context}): {member.id} -> {getattr(channel, 'id', 'n/a')} | {type(exc).__name__}: {exc}")
+        logger.warning(f"VOICE move failed ({context}): {member.id} -> {getattr(channel, 'id', 'n/a')} | {type(exc).__name__}: {exc}")
 
 async def process_teams_parallel(team_list_1, team_list_2):
     t1_dict, t2_dict = {}, {}
@@ -611,13 +611,13 @@ async def process_teams_parallel(team_list_1, team_list_2):
             if not validate_steamid64(sid):
                 skipped_players.append(player.display_name)
                 logger.warning(
-                    f"MATCH_JSON: steamid invalido ignorado user={player.id} sid={sid!r}"
+                    f"MATCH_JSON: invalid steamid ignored user={player.id} sid={sid!r}"
                 )
                 continue
             if sid in used_steamids:
                 skipped_players.append(player.display_name)
                 logger.warning(
-                    f"MATCH_JSON: steamid duplicado ignorado user={player.id} sid={sid!r}"
+                    f"MATCH_JSON: duplicate steamid ignored user={player.id} sid={sid!r}"
                 )
                 continue
             used_steamids.add(sid)
@@ -649,7 +649,7 @@ async def _ensure_faceit_info(session, players):
         if isinstance(faceit, dict):
             session.setdefault("faceit_info", {})[player.id] = faceit
 
-    # Aplica overrides de smurf — substitui level e elo pelo valor definido pela moderação
+        # Apply smurf overrides — replace level and elo with moderation-defined values
     try:
         from bot.database import db as _db
         discord_ids = [p.id for p in players]
@@ -666,7 +666,7 @@ async def _ensure_faceit_info(session, players):
                 session["faceit_info"][did]["level"] = row["override_level"]
                 session["faceit_info"][did]["is_smurf"] = True
     except Exception as e:
-        logger.warning(f"_ensure_faceit_info: erro ao checar smurf_overrides: {e}")
+        logger.warning(f"_ensure_faceit_info: error checking smurf_overrides: {e}")
 
 async def get_online_count(server_config):
     try:
@@ -685,17 +685,17 @@ def create_pick_embed(s_id):
 
     is_cap1_turn = turn_player.id == cap1.id
     embed_color = 0x5D7CA6 if is_cap1_turn else 0xC0392B
-    team_label = "TIME 1" if is_cap1_turn else "TIME 2"
+    team_label = "TEAM 1" if is_cap1_turn else "TEAM 2"
 
     embed = discord.Embed(
-        title=f"⚔️ PROTOCOLO DE DRAFT — {team_label}",
+        title=f"⚔️ DRAFT PROTOCOL — {team_label}",
         color=embed_color
     )
 
     if session["pick_reason"]:
         embed.description = (
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"ℹ️ **Nota tática:** {session['pick_reason']}\n"
+            f"ℹ️ **Note:** {session['pick_reason']}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━"
         )
 
@@ -712,7 +712,7 @@ def create_pick_embed(s_id):
         icon = "⭐" if is_captain else "👤"
         name_str = f"{icon} **{p.display_name}** `{pos}`"
         if is_smurf:
-            stats = f"` Lv {lvl: <2} ` 🔵 ` CONTA SMURF `"
+            stats = f"` Lv {lvl: <2} ` 🔵 ` SMURF ACCOUNT `"
             return f"{name_str}\n└ {stats}"
         if lvl is not None:
             ball = faceit_ball(lvl)
@@ -722,17 +722,17 @@ def create_pick_embed(s_id):
 
     def build_team_list(players, captain_obj):
         if not players:
-            return "_Aguardando escolhas..._"
+            return "_Waiting for picks..._"
         return "\n\n".join(get_fmt_name(p, p.id == captain_obj.id) for p in players)
 
     embed.add_field(
-        name=f"🟦 EQUIPE {cap1.display_name.upper()}",
+        name=f"🟦 TEAM {cap1.display_name.upper()}",
         value=build_team_list(session["team1"], cap1),
         inline=True
     )
     embed.add_field(name="\u200b", value="\u200b", inline=True)
     embed.add_field(
-        name=f"🟥 EQUIPE {cap2.display_name.upper()}",
+        name=f"🟥 TEAM {cap2.display_name.upper()}",
         value=build_team_list(session["team2"], cap2),
         inline=True
     )
@@ -747,7 +747,7 @@ def create_pick_embed(s_id):
             elo = faceit.get("elo")
             is_smurf = faceit.get("is_smurf", False)
             if is_smurf:
-                avail_list.append(f"` Lv {lvl: <2} ` 🔵 ` CONTA SMURF ` **{p.display_name}** `{pos}`")
+                avail_list.append(f"` Lv {lvl: <2} ` 🔵 ` SMURF ACCOUNT ` **{p.display_name}** `{pos}`")
             elif lvl is not None:
                 ball = faceit_ball(lvl)
                 elo_str = str(elo) if elo else "----"
@@ -755,15 +755,15 @@ def create_pick_embed(s_id):
             else:
                 avail_list.append(f"` -- ` **{p.display_name}** `{pos}`")
         embed.add_field(
-            name="👥 CANDIDATOS NA POOL",
+            name="👥 CANDIDATES IN POOL",
             value="\n".join(avail_list),
             inline=False
         )
     else:
-        embed.add_field(name="🏁 STATUS", value="` RECRUTAMENTO FINALIZADO `", inline=False)
+        embed.add_field(name="🏁 STATUS", value="` DRAFT COMPLETE `", inline=False)
 
     embed.set_footer(
-        text=f"AGUARDANDO DECISÃO DE: {turn_player.display_name.upper()}",
+        text=f"AWAITING DECISION FROM: {turn_player.display_name.upper()}",
         icon_url=turn_player.display_avatar.url
     )
 
@@ -778,7 +778,7 @@ def create_map_voting_embed(s_id):
 
     is_team1 = team_num == 1
     team_color = 0x5D7CA6 if is_team1 else 0xC0392B
-    team_label = "TIME 1" if is_team1 else "TIME 2"
+    team_label = "TEAM 1" if is_team1 else "TEAM 2"
     team_icon = "🟦" if is_team1 else "🟥"
     bar_fill = "🟦" if is_team1 else "🟥"
 
@@ -793,35 +793,35 @@ def create_map_voting_embed(s_id):
             banned_maps.append(f"~~{m}~~ ❌")
         else:
             vote_count = len(veto_votes.get(m, set()))
-            suffix = f" `[{vote_count} votos]`" if vote_count > 0 else ""
+            suffix = f" `[{vote_count} votes]`" if vote_count > 0 else ""
             available_maps.append(f"🔹 **{m}**{suffix}")
 
     expires_at = session.get("veto_expires_at")
     remaining_seconds = 0
     if expires_at:
         remaining_seconds = max(0, int(expires_at) - int(discord.utils.utcnow().timestamp()))
-    time_str = f"⏳ {remaining_seconds} segundos\n" if expires_at else ""
+    time_str = f"⏳ {remaining_seconds} seconds\n" if expires_at else ""
 
     embed = discord.Embed(
-        title=f"🗺️ FASE DE VETO — RODADA {round_num}",
+        title=f"🗺️ VETO PHASE — ROUND {round_num}",
         color=team_color,
         description=(
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"{team_icon} **{team_label}** está no controle!\n"
-            f"Ação: Banir **{bans_this_round}** mapa(s) da pool.\n"
+            f"{team_icon} **{team_label}** is in control!\n"
+            f"Action: Ban **{bans_this_round}** map(s) from the pool.\n"
             f"{time_str}"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━"
         )
-    )
+        )
 
     embed.add_field(
-        name="📍 Map Pool Ativa",
+        name="📍 Active Map Pool",
         value="\n".join(available_maps) if available_maps else "—",
         inline=True
     )
     embed.add_field(
-        name="🚫 Histórico de Bans",
-        value="\n".join(banned_maps) if banned_maps else "Nenhum",
+        name="🚫 Ban History",
+        value="\n".join(banned_maps) if banned_maps else "None",
         inline=True
     )
 
@@ -838,36 +838,36 @@ def create_map_voting_embed(s_id):
 
     if voted_status:
         embed.add_field(
-            name="👥 Status da Votação Coletiva",
+            name="👥 Collective Vote Status",
             value="\n".join(voted_status),
             inline=False
         )
 
-    embed.set_footer(text=f"Cada jogador tem {max_votes} voto(s) • Decisão Coletiva")
+    embed.set_footer(text=f"Each player has {max_votes} vote(s) • Collective Decision")
 
     return embed
 
 
-# ================= FILA GLOBAL =================
+# ================= GLOBAL QUEUE =================
 
 async def schedule_queue_update(bot):
-    fila_cog = get_fila_cog(bot)
+    fila_cog = get_queue_cog(bot)
     if fila_cog:
         await fila_cog.request_display_update()
 
 async def update_queue_display(bot):
-    fila_cog = get_fila_cog(bot)
+    fila_cog = get_queue_cog(bot)
     if fila_cog:
         await fila_cog.request_display_update()
 
 class MixCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self._fila_ready_lock = asyncio.Lock()
+        self._queue_ready_lock = asyncio.Lock()
         init_sessions()
 
     async def cog_load(self):
-        logger.debug("MixCog carregado")
+        logger.debug("MixCog loaded")
         self.server_monitor_loop.start()
         self.notconnect_recovery_loop.start()
         self.db_keep_alive.start()
@@ -892,7 +892,7 @@ class MixCog(commands.Cog):
                 if str(runtime_id).strip()
             }
         except Exception as exc:
-            logger.warning(f"Nao foi possivel consultar runtimes livres do pool: {exc}")
+            logger.warning(f"Could not query free runtimes from pool: {exc}")
 
         voice_member_counts: Dict[int, int] = {}
         for server in SERVERS.values():
@@ -911,22 +911,22 @@ class MixCog(commands.Cog):
         )
 
     @commands.Cog.listener()
-    async def on_fila_pronta(self, jogadores: List[Dict]):
-        async with self._fila_ready_lock:
-            if not jogadores or len(jogadores) < 10:
+    async def on_queue_ready(self, payload: List[Dict]):
+        async with self._queue_ready_lock:
+            if not payload or len(payload) < 10:
                 return
 
-            first_member = jogadores[0].get("member")
+            first_member = payload[0].get("member")
             if not first_member:
                 return
             guild = first_member.guild
             sala_proximo = guild.get_channel(SALA_PROXIMO_ID) if SALA_PROXIMO_ID else None
-            fila_cog = get_fila_cog(self.bot)
+            fila_cog = get_queue_cog(self.bot)
             target_server_id = await self._pick_free_lobby_server()
             if not target_server_id:
                 logger.warning("Fila pronta, mas nenhum lobby livre para iniciar novo mix.")
                 if fila_cog:
-                    await fila_cog.requeue_payload(jogadores, dispatch_ready=True)
+                    await fila_cog.requeue_payload(payload, dispatch_ready=True)
                 return
 
             server = SERVERS[target_server_id]
@@ -935,7 +935,7 @@ class MixCog(commands.Cog):
             if not picks_voice or not picks_text:
                 logger.warning(f"Fila pronta ignorada: canais de lobby ausentes em {target_server_id}.")
                 if fila_cog:
-                    await fila_cog.requeue_payload(jogadores, dispatch_ready=True)
+                    await fila_cog.requeue_payload(payload, dispatch_ready=True)
                 return
 
             await refresh_server_category_visibility(
@@ -946,7 +946,7 @@ class MixCog(commands.Cog):
             )
 
             eligible: List[discord.Member] = []
-            for item in jogadores:
+            for item in payload:
                 member = item.get("member")
                 if not member or member.bot:
                     continue
@@ -961,13 +961,13 @@ class MixCog(commands.Cog):
                     f"Fila pronta invalida para {target_server_id}: elegiveis={len(eligible)}. Repondo fila."
                 )
                 if fila_cog:
-                    await fila_cog.requeue_payload(jogadores, dispatch_ready=True)
+                    await fila_cog.requeue_payload(payload, dispatch_ready=True)
                 await refresh_server_category_visibility(self.bot, target_server_id, reason="fila_invalid_payload")
                 return
 
             selected = eligible[:10]
             pulled_payload: List[Dict] = []
-            logger.info(f"Fila pronta para {target_server_id}: aguardando 5s antes de mover jogadores.")
+            logger.info(f"Fila pronta para {target_server_id}: aguardando 5s antes de mover payload.")
             await asyncio.sleep(5.0)
 
             still_ready: List[discord.Member] = []
@@ -984,7 +984,7 @@ class MixCog(commands.Cog):
                     f"somente {len(still_ready)}/10 permaneceram na fila apos espera de 5s."
                 )
                 if fila_cog:
-                    await fila_cog.requeue_payload(jogadores, dispatch_ready=True)
+                    await fila_cog.requeue_payload(payload, dispatch_ready=True)
                 await refresh_server_category_visibility(self.bot, target_server_id, reason="fila_cancelled_wait")
                 return
 
@@ -1032,7 +1032,7 @@ class MixCog(commands.Cog):
                     for member in moved:
                         await safe_move_member(member, sala_proximo, context=f"{target_server_id}:rollback_fila")
                 if fila_cog:
-                    await fila_cog.requeue_payload(jogadores + pulled_payload, dispatch_ready=True)
+                    await fila_cog.requeue_payload(payload + pulled_payload, dispatch_ready=True)
                 await refresh_server_category_visibility(self.bot, target_server_id, reason="fila_rollback")
                 return
 
@@ -1047,7 +1047,7 @@ class MixCog(commands.Cog):
                     for member in moved:
                         await safe_move_member(member, sala_proximo, context=f"{target_server_id}:rollback_accept")
                 if fila_cog:
-                    await fila_cog.requeue_payload(jogadores, dispatch_ready=True)
+                    await fila_cog.requeue_payload(payload, dispatch_ready=True)
                 await refresh_server_category_visibility(self.bot, target_server_id, reason="accept_rollback")
 
     @tasks.loop(hours=4)
@@ -1057,9 +1057,9 @@ class MixCog(commands.Cog):
             if ok:
                 logger.info("✅ DB Keep-Alive OK.")
             else:
-                logger.warning("DB Keep-Alive falhou; aguardando reconexao.")
+                logger.warning("DB Keep-Alive failed; waiting for reconnection.")
         except Exception as e:
-            logger.warning(f"DB Keep-Alive falhou: {e}")
+            logger.warning(f"DB Keep-Alive failed: {e}")
 
 
     @tasks.loop(seconds=10)
@@ -1141,7 +1141,7 @@ class MixCog(commands.Cog):
         )
 
         faceit_tasks = {}
-        fila_cog = get_fila_cog(self.bot)
+        fila_cog = get_queue_cog(self.bot)
         if fila_cog:
             await fila_cog.remove_players_from_queue([p.id for p in session["players"]])
         for p in session["players"]:
@@ -1267,7 +1267,7 @@ class MixCog(commands.Cog):
         needed = max(0, 10 - len(connected_players))
         pulled_members: List[discord.Member] = []
         if needed > 0:
-            fila_cog = get_fila_cog(self.bot)
+            fila_cog = get_queue_cog(self.bot)
             candidates: List[discord.Member] = []
             if fila_cog:
                 candidates = await fila_cog.take_next_players(guild, needed)
@@ -1282,15 +1282,15 @@ class MixCog(commands.Cog):
         missing_names = [p.display_name for p in missing_players]
         pulled_names = [p.display_name for p in pulled_members]
         embed = discord.Embed(
-            title=f"⛔ Partida cancelada por não conexão ({SERVERS[s_id]['name']})",
+            title=f"⛔ Match cancelled due to no connection ({SERVERS[s_id]['name']})",
             color=0xe67e22,
-            description="Fluxo automático acionado para reaproveitar quem conectou e repor pela fila.",
+            description="Automatic flow triggered to reuse those who connected and fill from the queue.",
             timestamp=discord.utils.utcnow(),
         )
-        embed.add_field(name="Conectaram e voltaram para picks", value="\n".join([f"✅ {n}" for n in recovered_names]) or "-", inline=False)
-        embed.add_field(name="Não conectaram", value="\n".join([f"❌ {n}" for n in missing_names]) or "-", inline=False)
+        embed.add_field(name="Connected and returned to picks", value="\n".join([f"✅ {n}" for n in recovered_names]) or "-", inline=False)
+        embed.add_field(name="Did not connect", value="\n".join([f"❌ {n}" for n in missing_names]) or "-", inline=False)
         if pulled_names:
-            embed.add_field(name="Puxados da fila (ordem)", value="\n".join([f"➡️ {n}" for n in pulled_names]), inline=False)
+            embed.add_field(name="Pulled from queue (order)", value="\n".join([f"➡️ {n}" for n in pulled_names]), inline=False)
 
         restart_players = [m for m in picks_voice.members if not m.bot]
         restarted = False
@@ -1300,11 +1300,11 @@ class MixCog(commands.Cog):
                 s_id=s_id,
                 channel=picks_text,
                 players=restart_players,
-                restart_reason="Partida anterior cancelada por não conexão.",
+                restart_reason="Previous match cancelled due to no connection.",
             )
 
         if restarted:
-            embed.add_field(name="Próximo passo", value="✅ Mix reiniciado automaticamente na fase de ACEITAR.", inline=False)
+            embed.add_field(name="Next step", value="✅ Mix automatically restarted in ACCEPT phase.", inline=False)
             await refresh_server_category_visibility(
                 self.bot,
                 s_id,
@@ -1313,8 +1313,8 @@ class MixCog(commands.Cog):
             )
         else:
             embed.add_field(
-                name="Próximo passo",
-                value="⚠️ Não foi possível fechar 10 jogadores. Complete a sala de picks e inicie novamente.",
+                name="Next step",
+                value="⚠️ Could not close 10 players. Complete the picks room and start again.",
                 inline=False,
             )
             await refresh_server_category_visibility(self.bot, s_id, reason="notconnect_no_restart")
@@ -1368,23 +1368,23 @@ class MixCog(commands.Cog):
         await self.bot.wait_until_ready()
         await asyncio.sleep(3)
 
-    @app_commands.command(name="fixpainel", description="Reseta o painel de monitoramento.")
-    async def fix_painel(self, interaction: discord.Interaction):
+    @app_commands.command(name="fixpanel", description="Resets the monitoring panel.")
+    async def fix_panel(self, interaction: discord.Interaction):
         ctx = await commands.Context.from_interaction(interaction)
         ch = self.bot.get_channel(CANAL_MONITOR_ID)
         if ch: await ch.purge(limit=10)
-        global_state["monitor_msgs"] = {}; await ctx.send("✅ Painel resetado.", delete_after=5)
-    @app_commands.command(name="cancelarmix", description="Cancela o mix ativo no servidor atual.")
-    async def cancelar_mix(self, interaction: discord.Interaction, server_num: Optional[str] = None):
+        global_state["monitor_msgs"] = {}; await ctx.send("✅ Panel reset.", delete_after=5)
+    @app_commands.command(name="cancelmix", description="Cancels the active mix on the current server.")
+    async def cancel_mix(self, interaction: discord.Interaction, server_num: Optional[str] = None):
         ctx = await commands.Context.from_interaction(interaction)
-        await self._cancelar_mix_impl(
+        await self._cancel_mix_impl(
             guild=ctx.guild,
             channel=ctx.channel,
             send=ctx.send,
             server_num=server_num,
         )
 
-    async def _cancelar_mix_impl(
+    async def _cancel_mix_impl(
         self,
         *,
         guild: discord.Guild,
@@ -1482,7 +1482,7 @@ class MixCog(commands.Cog):
                     "active": True,
                     "status": "LIVE",
                     "match_id": int(m_id),
-                    "notconnect_recovered": True,  # evita que o recovery rode numa partida já em andamento após restart do bot
+                    "notconnect_recovered": True,  # prevents recovery from running on an already in-progress match after bot restart
                 })
                 try:
                     runtime_row = await get_match_runtime_server(int(m_id))
@@ -1513,7 +1513,7 @@ class MixCog(commands.Cog):
 
         def resolve_log_label(channel_id):
             if channel_id == SALA_PROXIMO_ID:
-                return "Próximo"
+                return "Next"
             for srv in SERVERS.values():
                 if channel_id == srv["channels"]["picks_voice"]:
                     return srv["name"]
@@ -1523,12 +1523,12 @@ class MixCog(commands.Cog):
         if after.channel:
             label = resolve_log_label(after.channel.id)
             if label:
-                try: await logs_channel.send(f"[{ts}] 🟢 **ENTROU** | **{member.display_name}** → **{label}**")
+                try: await logs_channel.send(f"[{ts}] 🟢 **JOINED** | **{member.display_name}** → **{label}**")
                 except: pass
         if before.channel:
             label = resolve_log_label(before.channel.id)
             if label:
-                try: await logs_channel.send(f"[{ts}] 🔴 **SAIU** | **{member.display_name}** → **{label}**")
+                try: await logs_channel.send(f"[{ts}] 🔴 **LEFT** | **{member.display_name}** → **{label}**")
                 except: pass
 
     @commands.Cog.listener()
@@ -1552,7 +1552,7 @@ class MixCog(commands.Cog):
             return
         _schedule_mix_text_channel_cleanup(after.channel)
 
-    @app_commands.command(name="startmix", description="Inicia o mix com 10 jogadores no servidor do canal atual.")
+    @app_commands.command(name="startmix", description="Starts the mix with 10 players on the current channel's server.")
     async def startmix(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True, thinking=False)
         channel = interaction.channel
@@ -1591,7 +1591,7 @@ class MixCog(commands.Cog):
         sala = author.voice.channel
         players = [m for m in sala.members if not m.bot]
         if len(players) != 10:
-            await send("E necessario ter 10 jogadores na sala de voz.")
+            await send("E necessario ter 10 payload na sala de voz.")
             return False
 
         await refresh_server_category_visibility(
@@ -1609,7 +1609,7 @@ class TorneioInscricaoView(View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(Button(
-            label="📋 Inscreva-se",
+            label="📋 Sign Up",
             style=discord.ButtonStyle.link,
             url="https://forms.gle/VpQLYXW43MkGwLjB8",
         ))
@@ -1626,15 +1626,15 @@ class AcceptMixView(View):
         if interaction.user.id in session["accepts"]: return
         session["accepts"].add(interaction.user.id)
         total = len(session["accepts"])
-        await interaction.followup.send("✅ **Você aceitou a partida!**", ephemeral=True)
+        await interaction.followup.send("✅ **You accepted the match!**", ephemeral=True)
         try:
             missing_players = build_accept_missing_players(session)
             missing_text = build_accept_missing_mentions(missing_players)
-            embed = discord.Embed(title=f"🚨 PARTIDA ENCONTRADA - {SERVERS[self.s_id]['name']}", color=0xf1c40f)
+            embed = discord.Embed(title=f"🚨 MATCH FOUND - {SERVERS[self.s_id]['name']}", color=0xf1c40f)
             embed.add_field(name="Progresso", value=f"{get_progress_bar(total)} ({total}/10)", inline=False)
-            embed.add_field(name="Prazo para aceitar", value=build_accept_deadline_text(session), inline=False)
+            embed.add_field(name="Deadline to accept", value=build_accept_deadline_text(session), inline=False)
             if missing_players:
-                embed.add_field(name="⏳ Aguardando Confirmação de:", value=missing_text, inline=False)
+                embed.add_field(name="⏳ Awaiting Confirmation from:", value=missing_text, inline=False)
             await session["accept_message"].edit(embed=embed, view=self)
         except: pass
         if total == 10:
@@ -1646,7 +1646,7 @@ class AcceptMixView(View):
                 try:
                     session["match_id"] = await reserve_match_id(self.s_id)
                 except Exception as e:
-                    logger.error(f"Erro ao reservar match_id ({self.s_id}): {e}")
+                    logger.error(f"Error reserving match_id ({self.s_id}): {e}")
                     await interaction.channel.send("⛔ Falha ao reservar MatchID. Tente novamente.")
                     reset_session(self.s_id)
                     sessions[self.s_id]["suspend_auto_restore"] = True
@@ -1663,7 +1663,7 @@ class AcceptMixView(View):
                     strict_preferred_runtime=True,
                 )
             except NoServerAvailableError:
-                await interaction.channel.send("⛔ Nenhum servidor livre no pool (1-5). Aguarde um mix finalizar.")
+                await interaction.channel.send("⛔ No free server in the pool (1-5). Aguarde um mix finalizar.")
                 reset_session(self.s_id)
                 sessions[self.s_id]["suspend_auto_restore"] = True
                 await refresh_server_category_visibility(interaction.client, self.s_id, reason="accept_pool_unavailable")
@@ -1739,11 +1739,11 @@ class CaptainVoteButton(Button):
         if interaction.user not in session["players"]: return
         uid = interaction.user.id
         votos = session["voted_users"].get(uid, [])
-        if self.player.id in votos or len(votos) >= 2: return await interaction.response.send_message("❌ Voto inválido.", ephemeral=True)
+        if self.player.id in votos or len(votos) >= 2: return await interaction.response.send_message("❌ Invalid vote.", ephemeral=True)
         votos.append(self.player.id)
         session["voted_users"][uid] = votos
         session["captain_votes"][self.player.id] = session["captain_votes"].get(self.player.id, 0) + 1
-        await interaction.response.send_message("🗳️ Voto computado.", ephemeral=True)
+        await interaction.response.send_message("🗳️ Vote counted.", ephemeral=True)
         await update_vote_message(self.s_id)
 
 class PickView(View):
@@ -1848,7 +1848,7 @@ class MapVoteButton(Button):
         async with lock:
             session = sessions.get(self.s_id)
             if not session or session.get("status") != "VETO":
-                await interaction.followup.send("Veto não está ativo.", ephemeral=True)
+                await interaction.followup.send("Veto is not active.", ephemeral=True)
                 return
 
             round_num = session.get("veto_round", 1)
@@ -1856,12 +1856,12 @@ class MapVoteButton(Button):
             banning_team = session["team1"] if team_num == 1 else session["team2"]
 
             if interaction.user not in banning_team:
-                other_label = "Time 1" if team_num == 2 else "Time 2"
-                await interaction.followup.send(f"Não é a vez do seu time. Aguarde o **{other_label}** terminar.", ephemeral=True)
+                other_label = "Team 1" if team_num == 2 else "Team 2"
+                await interaction.followup.send(f"It's not your team's turn. Wait for **{other_label}** to finish.", ephemeral=True)
                 return
 
             if self.mapa not in session.get("maps", []):
-                await interaction.followup.send("Este mapa já foi vetado.", ephemeral=True)
+                await interaction.followup.send("This map has already been vetoed.", ephemeral=True)
                 return
 
             max_votes = 3 if round_num <= 2 else 1
@@ -1870,19 +1870,19 @@ class MapVoteButton(Button):
             veto_player_votes = session.setdefault("veto_player_votes", {})
 
             if interaction.user.id in veto_votes.get(self.mapa, set()):
-                await interaction.followup.send(f"Você já votou em **{self.mapa}**.", ephemeral=True)
+                await interaction.followup.send(f"You already voted on **{self.mapa}**.", ephemeral=True)
                 return
 
             player_voted_maps = veto_player_votes.get(interaction.user.id, set())
             if len(player_voted_maps) >= max_votes:
-                await interaction.followup.send(f"Você já usou todos os seus **{max_votes}** voto(s).", ephemeral=True)
+                await interaction.followup.send(f"You already used all your **{max_votes}** vote(s).", ephemeral=True)
                 return
 
             veto_votes.setdefault(self.mapa, set()).add(interaction.user.id)
             veto_player_votes.setdefault(interaction.user.id, set()).add(self.mapa)
             votes_used = len(veto_player_votes[interaction.user.id])
 
-            # Verifica se todos do time banning já usaram todos os votos
+            # Checks if all players on the banning team have used all their votes
             all_voted = all(
                 len(veto_player_votes.get(p.id, set())) >= max_votes
                 for p in banning_team
@@ -1907,17 +1907,17 @@ class MapVoteButton(Button):
 
         if votes_used is not None:
             await interaction.followup.send(
-                f"✅ Votou em **{self.mapa}** ({votes_used}/{max_votes_out} votos usados).",
+                f"✅ Voted on **{self.mapa}** ({votes_used}/{max_votes_out} votes used).",
                 ephemeral=True
             )
 
-# ================= LÓGICA DE DRAFT =================
+# ================= DRAFT LOGIC =================
 
 async def update_vote_message(s_id):
     session = sessions[s_id]
     if not session.get("message"): return
-    embed = discord.Embed(title=f"🗳️ VOTAÇÃO - {SERVERS[s_id]['name']}", color=0x9b59b6)
-    embed.description = "\n".join([f"**{p.display_name}**: {session['captain_votes'].get(p.id, 0)} votos" for p in session["players"]])
+    embed = discord.Embed(title=f"🗳️ VOTING - {SERVERS[s_id]['name']}", color=0x9b59b6)
+    embed.description = "\n".join([f"**{p.display_name}**: {session['captain_votes'].get(p.id, 0)} votes" for p in session["players"]])
     try: await session["message"].edit(embed=embed)
     except: pass
 
@@ -1945,8 +1945,8 @@ async def start_map_veto_round(s_id, channel):
     round_num = session["veto_round"]
     bans = 3 if round_num <= 2 else 1
     session["veto_expires_at"] = int(discord.utils.utcnow().timestamp()) + _map_veto_timeout_for_round(round_num)
-    team_label = "Time 1" if round_num % 2 == 1 else "Time 2"
-    logger.info(f"VETO rodada {round_num} — {team_label} banindo {bans} mapa(s) ({s_id})")
+    team_label = "Team 1" if round_num % 2 == 1 else "Team 2"
+    logger.info(f"VETO round {round_num} — {team_label} banning {bans} map(s) ({s_id})")
     try:
         await session["message"].edit(
             embed=create_map_voting_embed(s_id),
@@ -1957,7 +1957,7 @@ async def start_map_veto_round(s_id, channel):
     await schedule_map_veto_timeout(s_id, channel)
 
 async def _execute_veto_round(s_id, channel):
-    """Processa o fim de uma rodada de veto (compartilhado entre timeout e early-finish)."""
+    """Processes the end of a veto round (shared between timeout and early-finish)."""
     lock = get_map_veto_lock(s_id)
     should_finish = False
     next_round = False
@@ -2048,7 +2048,7 @@ async def accept_timeout(bot, channel, s_id):
         needed = max(0, 10 - len(remaining_players))
         pulled = 0
         pulled_names = []
-        fila_cog = get_fila_cog(bot)
+        fila_cog = get_queue_cog(bot)
         candidates: List[discord.Member] = []
         if fila_cog and needed > 0:
             candidates = await fila_cog.take_next_players(guild, needed)
@@ -2063,19 +2063,19 @@ async def accept_timeout(bot, channel, s_id):
 
         try:
             embed_log = discord.Embed(
-                title="🧹 Não aceitou, rodou!",
+                title="🧹 Didn't accept, got removed!",
                 color=0xe67e22,
-                description=f"{SERVERS[s_id]['name']}: buscando jogadores de próximo."
+                description=f"{SERVERS[s_id]['name']}: fetching next payload."
             )
             if removed_names:
                 embed_log.add_field(
-                    name="Removidos (não aceitaram)",
+                    name="Removed (didn't accept)",
                     value="\n".join([f"❌ {n}" for n in removed_names]),
                     inline=False,
                 )
             if pulled_names:
                 embed_log.add_field(
-                    name="Puxados da fila",
+                    name="Pulled from queue",
                     value="\n".join([f"✅ {n}" for n in pulled_names]),
                     inline=False,
                 )
@@ -2085,7 +2085,7 @@ async def accept_timeout(bot, channel, s_id):
 
         try: await session["accept_message"].delete()
         except: pass
-        await channel.send(f"⛔ **MIX CANCELADO - {SERVERS[s_id]['name']}**")
+        await channel.send(f"⛔ **MIX CANCELLED - {SERVERS[s_id]['name']}**")
         reset_session(s_id)
         sessions[s_id]["suspend_auto_restore"] = True
         await refresh_server_category_visibility(bot, s_id, reason="accept_timeout_cancel")
@@ -2108,7 +2108,7 @@ async def start_faceit_draft(channel, s_id):
 
     session["captain_vote_active"] = False
     session["captains"] = [cap1, cap2]
-    session["pick_reason"] = f"**{cap2.display_name}** tem mais Faceit elo; {cap1.display_name} começa!"
+    session["pick_reason"] = f"**{cap2.display_name}** has more Faceit elo; {cap1.display_name} starts!"
     session.update({
         "status": "DRAFT",
         "team1": [cap1],
@@ -2138,7 +2138,7 @@ async def start_faceit_draft(channel, s_id):
 async def start_captain_vote(channel, s_id):
     session = sessions[s_id]
     session.update({"status": "DRAFT", "captain_vote_active": True})
-    msg = await channel.send(embed=discord.Embed(title=f"🗳️ VOTAÇÃO DE CAPITÃES", color=0x9b59b6), view=CaptainVoteView(session["players"], s_id))
+    msg = await channel.send(embed=discord.Embed(title=f"🗳️ CAPTAIN VOTING", color=0x9b59b6), view=CaptainVoteView(session["players"], s_id))
     session["message"] = msg
     await update_vote_message(s_id)
     await asyncio.sleep(CAPTAIN_VOTE_TIMEOUT)
@@ -2154,7 +2154,7 @@ async def finish_captain_vote(channel, s_id):
     r1, r2 = await get_player_rank(c1.id), await get_player_rank(c2.id)
     if (r1['rating'] if r1 else 1000) <= (r2['rating'] if r2 else 1000): session["captains"] = [c1, c2]
     else: session["captains"] = [c2, c1]
-    session["pick_reason"] = f"🔻 **{session['captains'][0].display_name}** tem menos pontos e começa!"
+    session["pick_reason"] = f"🔻 **{session['captains'][0].display_name}** has fewer points and starts!"
     s_conf = SERVERS[s_id]
     asyncio.create_task(
         safe_move_member(
@@ -2178,19 +2178,19 @@ async def finish_map_veto(interaction, s_id):
     if not session.get("promo_sent"):
         apoio_ch = f"<#{CANAL_APOIO_ID}>" if CANAL_APOIO_ID else "#apoie-o-servidor"
         apoio = discord.Embed(
-            title="\U0001F680 FORTALEÇA A COMUNIDADE!",
+            title="\U0001F680 STRENGTHEN THE COMMUNITY!",
             description=(
-                "Manter os servidores online tem custos.\n"
-                "**Gosta de jogar aqui? Nos ajude a continuar!**\n\n"
-                f"\U0001F4B0 **Apoio Financeiro:** {apoio_ch}\n"
-                "\U0001F193 **Apoio Gratuito:** Use a tag :bee: **MIX** !"
+                "Keeping servers online has costs.\n"
+                "**Enjoy playing here? Help us keep going!**\n\n"
+                f"\U0001F4B0 **Financial Support:** {apoio_ch}\n"
+                "\U0001F193 **Free Support:** Use the :bee: **MIX** tag!"
             ),
             color=0x00FF00,
         )
         apoio.set_thumbnail(
             url="https://cdn.discordapp.com/attachments/1452985230565834804/1466928923702071339/LogoMixLeve.png?ex=697e8785&is=697d3605&hm=f87984bc7edff3658818b9c984ee3f2c4036c37c621445f5a07047ced0e34a75&"
         )
-        apoio.set_footer(text="Agradecemos demais sua força! Bom jogo!")
+        apoio.set_footer(text="Thank you so much for your support! Good game!")
 
         try:
             if session.get("message"):
@@ -2211,10 +2211,10 @@ async def finish_map_veto(interaction, s_id):
                     session["message"] = await interaction.channel.send(content=TORNEIO_BANNER_URL, view=TorneioInscricaoView())
             else:
                 torneio = discord.Embed(
-                    title="🏆 TORNEIO 5x5 — INSCRIÇÕES ABERTAS!",
+                    title="🏆 TOURNAMENT 5x5 — REGISTRATIONS OPEN!",
                     color=0xFFD700,
                 )
-                torneio.set_footer(text="Não perca! Vagas limitadas a 40 jogadores.")
+                torneio.set_footer(text="Don't miss it! Limited to 40 players.")
                 if session.get("message"):
                     await session["message"].edit(content="", embed=torneio, view=TorneioInscricaoView())
                 else:
@@ -2251,21 +2251,21 @@ async def finish_map_veto(interaction, s_id):
     )
     try:
         await set_active_match(s_id, m_id)
-        logger.info(f"CONFIG: active_matches atualizado {s_id} -> {m_id}")
+        logger.info(f"CONFIG: active_matches updated {s_id} -> {m_id}")
     except Exception as e:
-        logger.error(f"CONFIG: falha ao gravar active_matches ({s_id}): {e}")
+        logger.error(f"CONFIG: failed to write active_matches ({s_id}): {e}")
 
     t1, t2, skipped_players = await process_teams_parallel(session["team1"], session["team2"])
     expected_t1 = len(session["team1"])
     expected_t2 = len(session["team2"])
     if len(t1) != expected_t1 or len(t2) != expected_t2:
-        skipped_txt = ", ".join(skipped_players[:6]) if skipped_players else "jogadores com cadastro invalido"
+        skipped_txt = ", ".join(skipped_players[:6]) if skipped_players else "players with invalid registration"
         if len(skipped_players) > 6:
             skipped_txt += ", ..."
         await interaction.channel.send(
-            "⛔ Nao foi possivel iniciar a partida porque alguns cadastros estao invalidos para o MatchZy.\n"
-            f"Jogadores afetados: {skipped_txt}\n"
-            "Peça para os jogadores executarem `/cadastro` novamente."
+            "⛔ Could not start the match because some registrations are invalid for MatchZy.\n"
+            f"Affected players: {skipped_txt}\n"
+            "Ask the players to run `/register` again."
         )
         reset_session(s_id)
         sessions[s_id]["suspend_auto_restore"] = True
@@ -2340,7 +2340,7 @@ async def finish_map_veto(interaction, s_id):
                 strict_preferred_runtime=True,
             )
     except NoServerAvailableError:
-        await interaction.channel.send("? Nenhum servidor livre no pool (1-5). Aguarde um mix finalizar.")
+        await interaction.channel.send("? No free server in the pool (1-5). Aguarde um mix finalizar.")
         reset_session(s_id)
         sessions[s_id]["suspend_auto_restore"] = True
         try:

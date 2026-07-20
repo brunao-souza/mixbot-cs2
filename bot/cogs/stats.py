@@ -44,26 +44,26 @@ STAT_DEFS: Dict[str, Dict[str, str]] = {
     "enemy3k": {"column": "enemy3ks", "label": "Multi-kill 3K"},
     "enemy4k": {"column": "enemy4ks", "label": "Multi-kill 4K"},
     "enemy5k": {"column": "enemy5ks", "label": "Multi-kill 5K"},
-    "utilcount": {"column": "utility_count", "label": "Utility Usada"},
+    "utilcount": {"column": "utility_count", "label": "Utility Used"},
     "util": {"column": "utility_damage", "label": "Utility Damage"},
-    "utilsuccess": {"column": "utility_successes", "label": "Utility Sucessos"},
-    "utilenemies": {"column": "utility_enemies", "label": "Utility Enemies"},
-    "flashcount": {"column": "flash_count", "label": "Flash Usadas"},
-    "flash": {"column": "flash_successes", "label": "Flash Sucessos"},
-    "hpr": {"column": "health_points_removed_total", "label": "HP Removido"},
+    "utilsuccess": {"column": "utility_successes", "label": "Utility Successes"},
+    "utilenemies": {"column": "utility_enemies", "label": "Utility Enemies Hit"},
+    "flashcount": {"column": "flash_count", "label": "Flashes Used"},
+    "flash": {"column": "flash_successes", "label": "Flash Successes"},
+    "hpr": {"column": "health_points_removed_total", "label": "HP Removed"},
     "hpd": {"column": "health_points_dealt_total", "label": "HP Dealt"},
-    "shots": {"column": "shots_fired_total", "label": "Tiros Disparados"},
-    "shotshit": {"column": "shots_on_target_total", "label": "Tiros no Alvo"},
-    "v1count": {"column": "v1_count", "label": "1v1 Jogados"},
+    "shots": {"column": "shots_fired_total", "label": "Shots Fired"},
+    "shotshit": {"column": "shots_on_target_total", "label": "Shots on Target"},
+    "v1count": {"column": "v1_count", "label": "1v1 Played"},
     "v1": {"column": "v1_wins", "label": "1v1 Wins"},
-    "v2count": {"column": "v2_count", "label": "1v2 Jogados"},
+    "v2count": {"column": "v2_count", "label": "1v2 Played"},
     "v2": {"column": "v2_wins", "label": "1v2 Wins"},
-    "equip": {"column": "equipment_value", "label": "Valor de Equipamento"},
-    "moneysaved": {"column": "money_saved", "label": "Dinheiro Salvo"},
+    "equip": {"column": "equipment_value", "label": "Equipment Value"},
+    "moneysaved": {"column": "money_saved", "label": "Money Saved"},
     "killreward": {"column": "kill_reward", "label": "Kill Reward"},
-    "livetime": {"column": "live_time", "label": "Tempo Vivo"},
-    "cashearned": {"column": "cash_earned", "label": "Dinheiro Ganho"},
-    "enemiesflashed": {"column": "enemies_flashed", "label": "Inimigos Flasheados"},
+    "livetime": {"column": "live_time", "label": "Live Time"},
+    "cashearned": {"column": "cash_earned", "label": "Money Earned"},
+    "enemiesflashed": {"column": "enemies_flashed", "label": "Enemies Flashed"},
 }
 
 async def _get_top_stat(metric_key: str, days: int, limit: int = 10):
@@ -128,9 +128,9 @@ def _render_table(rows, guild, metric_key: str, label: str, days: int):
             lines.append(f"{i:02} | {name:<14} | {matches:>3} | {total:>5}")
         else:
             lines.append(f"{i:02} | {name:<14} | {total:>5}")
-    header = "POS| JOGADOR        | JG | TOTAL\n" if show_matches else "POS| JOGADOR        | TOTAL\n"
-    body = "\n".join(lines) if lines else "Sem dados no período."
-    return f"{label} (últimos {days} dias)\n```text\n{header}{body}\n```"
+    header = "POS| PLAYER          | PL | TOTAL\n" if show_matches else "POS| PLAYER          | TOTAL\n"
+    body = "\n".join(lines) if lines else "No data in this period."
+    return f"{label} (last {days} days)\n```text\n{header}{body}\n```"
 
 class StatsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -145,8 +145,8 @@ class StatsCog(commands.Cog):
         filtered = [k for k in keys if current.lower() in k.lower()]
         return [app_commands.Choice(name=k, value=k) for k in filtered[:25]]
 
-    @app_commands.command(name="rank", description="Top 10 por metrica")
-    @app_commands.describe(metric="Metrica, ex: entry, kills, hs, kdr", days="Dias para filtro")
+    @app_commands.command(name="rank", description="Top 10 by metric")
+    @app_commands.describe(metric="Metric, e.g. entry, kills, hs, kdr", days="Days for filter")
     @app_commands.autocomplete(metric=rank_metric_autocomplete)
     async def rank_slash(
         self,
@@ -157,7 +157,7 @@ class StatsCog(commands.Cog):
         metric_key = (metric or "").strip().lower()
         if metric_key not in STAT_DEFS:
             await interaction.response.send_message(
-                "Metrica invalida. Use o autocomplete do parametro `metric` no /rank.",
+                "Invalid metric. Use the autocomplete for the `metric` parameter in /rank.",
                 ephemeral=True,
             )
             return
@@ -165,7 +165,7 @@ class StatsCog(commands.Cog):
 
     async def _handle_stat_interaction(self, interaction: discord.Interaction, metric_key: str, days: int = 30):
         if interaction.guild is None:
-            await interaction.response.send_message("Use este comando dentro do servidor.", ephemeral=True)
+            await interaction.response.send_message("Use this command inside the server.", ephemeral=True)
             return
 
         await interaction.response.defer(thinking=False)
@@ -181,4 +181,4 @@ class StatsCog(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(StatsCog(bot))
-    logger.debug("StatsCog carregado")
+    logger.debug("StatsCog loaded")

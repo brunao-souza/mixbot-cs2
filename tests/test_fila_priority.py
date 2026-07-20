@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import discord
 
 from bot.cogs import fila as fila_module
-from bot.cogs.fila import FilaCog
+from bot.cogs.fila import QueueCog
 
 
 class _DummyChannel:
@@ -76,7 +76,7 @@ class FilaPriorityTests(unittest.IsolatedAsyncioTestCase):
 
         guild = _DummyGuild(waiters + winners_a + winners_b)
         bot = _DummyBot(guild)
-        cog = FilaCog(bot)
+        cog = QueueCog(bot)
         cog.READY_RECHECK_DELAY_SECONDS = 0.0
         cog.READY_SEND_DELAY_SECONDS = 0.0
 
@@ -149,7 +149,7 @@ class FilaPriorityTests(unittest.IsolatedAsyncioTestCase):
 
         guild = _DummyGuild(waiters + winners + losers)
         bot = _DummyBot(guild)
-        cog = FilaCog(bot)
+        cog = QueueCog(bot)
         cog.READY_RECHECK_DELAY_SECONDS = 0.0
         cog.READY_SEND_DELAY_SECONDS = 0.0
 
@@ -200,7 +200,7 @@ class FilaPriorityTests(unittest.IsolatedAsyncioTestCase):
 
         guild = _DummyGuild([member])
         bot = _DummyBot(guild)
-        cog = FilaCog(bot)
+        cog = QueueCog(bot)
 
         awarded_at = datetime(2026, 3, 12, 22, 30, tzinfo=timezone.utc)
         rejoin_time = datetime(2026, 3, 13, 15, 2, tzinfo=timezone.utc)
@@ -238,7 +238,7 @@ class FilaPriorityTests(unittest.IsolatedAsyncioTestCase):
 
         guild = _DummyGuild([member])
         bot = _DummyBot(guild)
-        cog = FilaCog(bot)
+        cog = QueueCog(bot)
 
         awarded_at = datetime(2026, 3, 12, 22, 30, tzinfo=timezone.utc)
         rejoin_time = datetime(2026, 3, 13, 6, 30, tzinfo=timezone.utc)

@@ -58,7 +58,7 @@ def _strip_emojis(text: str) -> str:
 
 def _format_last_match(match: Optional[dict]) -> str:
     if not match:
-        return "Sem partidas recentes."
+        return "No recent matches."
 
     player_team = match.get("team")
     team1 = match.get("team1_name")
@@ -68,7 +68,7 @@ def _format_last_match(match: Optional[dict]) -> str:
 
     won = ((player_team == team1 and score1 > score2) or
            (player_team == team2 and score2 > score1))
-    result_text = "VITORIA" if won else "DERROTA"
+    result_text = "VICTORY" if won else "DEFEAT"
 
     total_rounds = score1 + score2
     damage = match.get("damage", 0) or 0
@@ -90,7 +90,7 @@ def _build_profile_embed(target: discord.Member, rank_data: dict, stats: dict,
                          faceit_text: str, position, last_match: Optional[dict],
                          tournament_team_name: Optional[str], tournament_wins: int, tournament_losses: int) -> discord.Embed:
     
-    # --- 1. Cálculos Estatísticos ---
+    # --- 1. Statistical Calculations ---
     total_matches = rank_data.get("total_matches", 0) or 0
     wins = rank_data.get("wins", 0) or 0
     losses = rank_data.get("losses", 0) or 0
@@ -138,19 +138,18 @@ def _build_profile_embed(target: discord.Member, rank_data: dict, stats: dict,
 
     # --- 3. Embed ---
     
-    team_label = tournament_team_name or "Sem Time"
+    team_label = tournament_team_name or "No Team"
     embed = discord.Embed(
-        title=f"👤 {target.display_name}    |    🛡️ Time: {team_label}",
-        description=f"Análise de performance da Temporada Atual",
+        title=f"👤 {target.display_name}    |    🛡️ Team: {team_label}",
+        description=f"Current Season Performance Analysis",
         color=embed_color,
         timestamp=discord.utils.utcnow(),
     )
     
     embed.set_thumbnail(url=target.avatar.url if target.avatar else None)
 
-    # [MUDANÇA] Removido as crases (`) em volta do faceit_text para os asteriscos funcionarem
     embed.add_field(
-        name="🏆 Classificação",
+        name="🏆 Classification",
         value=(
             f"> **Rating:** `{rating} pts`\n"
             f"> **Ranking:** `#{position}`\n"
@@ -160,7 +159,7 @@ def _build_profile_embed(target: discord.Member, rank_data: dict, stats: dict,
     )
 
     embed.add_field(
-        name="🔥 Performance Média",
+        name="🔥 Average Performance",
         value=(
             f"> **K/D Ratio:** `{kd:.2f}`\n"
             f"> **ADR:** `{calculated_adr:.1f}`\n"
@@ -170,12 +169,12 @@ def _build_profile_embed(target: discord.Member, rank_data: dict, stats: dict,
     )
 
     embed.add_field(
-        name=f"📜 Histórico ({total_matches} partidas)",
-        value=f"**{wins}V** - **{losses}D** (Streak: **{rank_data.get('win_streak', 0)}**)\n`{progress_bar}` **{winrate:.1f}%**",
+        name=f"📜 History ({total_matches} matches)",
+        value=f"**{wins}W** - **{losses}L** (Streak: **{rank_data.get('win_streak', 0)}**)\n`{progress_bar}` **{winrate:.1f}%**",
         inline=False
     )
 
-    # Tabela de Dados
+    # Data Table
     stats_block = (
         f"Kills:    {avg_kills:<5.1f} | Aces:      {total_aces}\n"
         f"Deaths:   {avg_deaths:<5.1f} | Multi-K:   {multi_kills}\n"
@@ -184,39 +183,39 @@ def _build_profile_embed(target: discord.Member, rank_data: dict, stats: dict,
     )
     
     embed.add_field(
-        name="📈 Dados de Combate",
+        name="📈 Combat Data",
         value=f"```yaml\n{stats_block}\n```", 
         inline=False
     )
 
     embed.add_field(
-        name=f"🛡️ Time - {team_label}",
-        value=f"Torneio: `{tournament_wins}` W | `{tournament_losses}` L",
+        name=f"🛡️ Team - {team_label}",
+        value=f"Tournament: `{tournament_wins}` W | `{tournament_losses}` L",
         inline=False
     )
 
     if last_match:
-        # 1. Lógica de Vitória/Derrota
+        # 1. Win/Loss Logic
         player_team = last_match.get('team')
         s1 = last_match.get('map_score1', 0)
         s2 = last_match.get('map_score2', 0)
         
-        # Verifica quem ganhou
+        # Check who won
         won = False
         if player_team == last_match.get('team1_name') and s1 > s2:
             won = True
         elif player_team == last_match.get('team2_name') and s2 > s1:
             won = True
             
-        # 2. Define Ícone e Texto
+        # 2. Define Icon and Text
         if won:
             icon = "🟢"
-            status = "VITÓRIA"
+            status = "VICTORY"
         else:
             icon = "🔴"
-            status = "DERROTA"
+            status = "DEFEAT"
 
-        # 3. Formata os Dados
+        # 3. Format Data
         map_name = last_match.get('mapname', '').replace('de_', '').capitalize()
         score = f"{s1}-{s2}"
         
@@ -224,7 +223,7 @@ def _build_profile_embed(target: discord.Member, rank_data: dict, stats: dict,
         d = last_match.get('deaths', 0)
         a = last_match.get('assists', 0)
         
-        # Cálculos rápidos dessa partida específica
+        # Quick stats for this specific match
         kd_match = k / d if d > 0 else k
         rounds = s1 + s2
         adr_match = last_match.get('damage', 0) / rounds if rounds > 0 else 0
@@ -232,7 +231,7 @@ def _build_profile_embed(target: discord.Member, rank_data: dict, stats: dict,
         pts = (30 + bonus) if won else (-50 + bonus)
         pts_str = f"{pts:+d} pts"
 
-        # 4. Monta o Texto Visual
+        # 4. Build Visual Text
         last_match_text = (
             f"{icon} **{status}** ({score}) • **{map_name}**\n"
             f"> 🔫 K/D/A: `{k}/{d}/{a}` • K/D: `{kd_match:.2f}`\n"
@@ -240,12 +239,12 @@ def _build_profile_embed(target: discord.Member, rank_data: dict, stats: dict,
         )
 
         embed.add_field(
-            name="🕒 Última Partida",
+            name="🕒 Last Match",
             value=last_match_text,
             inline=False,
         )
 
-    embed.set_footer(text="Dados sincronizados a cada partida", icon_url=target.display_avatar.url)
+    embed.set_footer(text="Data synced after each match", icon_url=target.display_avatar.url)
     
     return embed
 
@@ -302,7 +301,7 @@ def build_ranking_embed(top_players, guild, title, top3_label, classif_label, lo
             line = f"  {pos_real:02d} | {rating:>5} | {nome_final:<14} | {wins:>2}-{losses:<2} "
             others_list.append(line)
 
-    header_table = " POS |  PTS  | JOGADOR        |  V-D \n"
+    header_table = " POS |  PTS  | PLAYER          |  W-L \n"
     header_line  = "─────|───────|────────────────|──────\n"
     table_content = "\n".join(others_list)
     embed.description = (
@@ -313,7 +312,7 @@ def build_ranking_embed(top_players, guild, title, top3_label, classif_label, lo
     )
     
     embed.set_footer(
-        text="Ranking atualizado em tempo real • MixBot", 
+        text="Ranking updated in real-time • MixBot", 
         icon_url=guild.icon.url if guild.icon else None
     )
     
@@ -321,7 +320,7 @@ def build_ranking_embed(top_players, guild, title, top3_label, classif_label, lo
 
 
 class RankingCog(commands.Cog):
-    """Cog para comandos de ranking e estatisticas"""
+    """Cog for ranking and statistics commands"""
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._season_start_date: Optional[str] = None
@@ -332,46 +331,46 @@ class RankingCog(commands.Cog):
                 self._season_start_date = raw_cutoff
             except ValueError:
                 logger.warning(
-                    f"SEASON_START_DATE invalida ('{raw_cutoff}'). /perfil sem filtro de season."
+                    f"Invalid SEASON_START_DATE ('{raw_cutoff}'). /profile without season filter."
                 )
 
-    @app_commands.command(name="ranking", description="Mostra o ranking atual dos jogadores.")
+    @app_commands.command(name="ranking", description="Shows the current player ranking.")
     async def ranking(self, interaction: discord.Interaction):
         ctx = await commands.Context.from_interaction(interaction)
-        """Exibe o Top 50 unificado, filtrando jogadores desconhecidos"""
+        """Displays the unified Top 50, filtering unknown players"""
 
         if ctx.channel.id != CANAL_RANKING_ID:
             if CANAL_RANKING_ID:
-                await ctx.send(f"🔴 Use este comando em <#{CANAL_RANKING_ID}>.")
+                await ctx.send(f"🔴 Use this command in <#{CANAL_RANKING_ID}>.")
             return
 
         try:
-            # Buscamos 100 para garantir que, apos filtrar os "Desconhecidos", sobrem 50 validos
+            # We fetch 100 to ensure that after filtering "Unknown" players, 50 valid remain
             top_players = await get_top_ranking(100)
 
             if not top_players:
-                await ctx.send("🔴 O ranking ainda esta vazio.")
+                await ctx.send("🔴 The ranking is still empty.")
                 return
 
             logo_url = "https://cdn.discordapp.com/attachments/1452985230565834804/1466928923702071339/LogoMixLeve.png?ex=698081c5&is=697f3045&hm=68516ac68aae3734d5faee8835f6bfa197edc5fc0711eb6380d32c858e89ee25&"
             embed = build_ranking_embed(
                 top_players,
                 ctx.guild,
-                "\U0001F3C6 RANKING TEMPORADA ATUAL",
-                "\u2B50 LIDERES (TOP 3)",
-                "\U0001F4CA CLASSIFICACAO",
+                "\U0001F3C6 CURRENT SEASON RANKING",
+                "\u2B50 LEADERS (TOP 3)",
+                "\U0001F4CA CLASSIFICATION",
                 logo_url
             )
             await ctx.send(embed=embed)
 
         except Exception as e:
-            logger.error(f"🔴 Erro no comando ranking: {e}")
-            await ctx.send("🔴 Erro ao processar o ranking.")
+            logger.error(f"🔴 Error in ranking command: {e}")
+            await ctx.send("🔴 Error processing ranking.")
 
-    @app_commands.command(name="perfil", description="Mostra o perfil detalhado de um jogador.")
-    async def perfil(self, interaction: discord.Interaction, member: Optional[discord.Member] = None):
+    @app_commands.command(name="profile", description="Shows detailed profile of a player.")
+    async def profile(self, interaction: discord.Interaction, member: Optional[discord.Member] = None):
         ctx = await commands.Context.from_interaction(interaction)
-        """Mostra o perfil do jogador em formato dashboard"""
+        """Shows the player's profile in dashboard format"""
         interaction = getattr(ctx, "interaction", None)
         if interaction and not interaction.response.is_done():
             try:
@@ -388,16 +387,16 @@ class RankingCog(commands.Cog):
 
         if ctx.channel.id != CANAL_GERAL_ID:
             if CANAL_GERAL_ID:
-                await _send(f"🔴 Use este comando em <#{CANAL_GERAL_ID}>.")
+                await _send(f"🔴 Use this command in <#{CANAL_GERAL_ID}>.")
             return
         target = member or ctx.author
         try:
             rank_data = await get_player_rank(target.id)
             if not rank_data or not rank_data.get('steamid64'):
-                await _send(f"🔴 {target.display_name} ainda nao vinculou a conta Steam!")
+                await _send(f"🔴 {target.display_name} has not linked their Steam account yet!")
                 return
             if rank_data['total_matches'] == 0:
-                await _send(f"🔴 {target.display_name} ainda nao jogou nenhuma partida!")
+                await _send(f"🔴 {target.display_name} has not played any matches yet!")
                 return
 
             stats = await get_player_stats(rank_data['steamid64'], start_date=self._season_start_date)
@@ -407,7 +406,7 @@ class RankingCog(commands.Cog):
                 ball = _faceit_ball(lvl)
                 faceit_text = f"lvl {lvl} {ball} Elo {faceit_profile.get('elo')}"
             else:
-                faceit_text = "Nao encontrado"
+                faceit_text = "Not found"
 
             position = "N/A"
             all_ranks = await get_top_ranking(1000)
@@ -440,36 +439,36 @@ class RankingCog(commands.Cog):
             )
             await _send(embed=embed)
         except Exception as e:
-            logger.error(f"🔴 Erro no comando perfil: {e}")
-            await _send("🔴 Erro ao buscar perfil.")
+            logger.error(f"🔴 Error in profile command: {e}")
+            await _send("🔴 Error fetching profile.")
 
-    @app_commands.command(name="historico", description="Mostra o historico recente de partidas de um jogador.")
-    async def historico(self, interaction: discord.Interaction, member: Optional[discord.Member] = None):
+    @app_commands.command(name="history", description="Shows recent match history of a player.")
+    async def history(self, interaction: discord.Interaction, member: Optional[discord.Member] = None):
         ctx = await commands.Context.from_interaction(interaction)
-        """Mostra histórico das últimas 10 partidas com visual detalhado"""
+        """Shows history of the last 10 matches with detailed view"""
         target = member or ctx.author
         
         try:
             rank_data = await get_player_rank(target.id)
             if not rank_data or not rank_data.get('steamid64'):
-                await ctx.send(f"⚠️ **{target.display_name}** ainda não vinculou a conta Steam!")
+                await ctx.send(f"⚠️ **{target.display_name}** has not linked their Steam account yet!")
                 return
             
-            # Busca histórico
+            # Fetch history
             history = await get_player_history(rank_data['steamid64'], 10)
             if not history:
-                await ctx.send(f"⚠️ **{target.display_name}** ainda não jogou nenhuma partida!")
+                await ctx.send(f"⚠️ **{target.display_name}** has not played any matches yet!")
                 return
 
-            # --- CÁLCULO DE RESUMO (W/L RECENTE) ---
+            # --- SUMMARY CALCULATION (RECENT W/L) ---
             recent_wins = 0
             recent_losses = 0
             
-            # Pré-processa para contar vitórias
+            # Pre-process to count wins
             processed_matches = []
             for match in history:
                 player_team = match['team']
-                # Lógica de vitória
+                # Win logic
                 won = ((player_team == match['team1_name'] and match['map_score1'] > match['map_score2']) or
                        (player_team == match['team2_name'] and match['map_score2'] > match['map_score1']))
                 
@@ -478,54 +477,51 @@ class RankingCog(commands.Cog):
                 
                 processed_matches.append((match, won))
 
-            # Define a cor baseada no desempenho recente (Mais vitórias = Verde, Mais derrotas = Vermelho)
+            # Set color based on recent performance (More wins = Green, More losses = Red)
             embed_color = 0x2ecc71 if recent_wins >= recent_losses else 0xe74c3c
 
             embed = discord.Embed(
-                title=f"📜 Histórico de Partidas",
-                description=f"Análise recente de **{target.display_name}**",
+                title=f"📜 Match History",
+                description=f"Recent analysis of **{target.display_name}**",
                 color=embed_color
             )
             embed.set_thumbnail(url=target.avatar.url if target.avatar else None)
             
-            # Campo de Resumo
+            # Summary Field
             win_pct = (recent_wins / len(history)) * 100
             embed.add_field(
-                name="📊 Desempenho Recente (Last 10)",
-                value=f"**{recent_wins}V** - **{recent_losses}D** ({win_pct:.0f}% Winrate)",
+                name="📊 Recent Performance (Last 10)",
+                value=f"**{recent_wins}W** - **{recent_losses}L** ({win_pct:.0f}% Winrate)",
                 inline=False
             )
 
-            # --- LOOP DAS PARTIDAS ---
+            # --- MATCH LOOP ---
             for match, won in processed_matches:
-                # 1. Ícones e Títulos
+                # 1. Icons and Titles
                 if won:
                     icon = "🟢"
-                    status = "VITÓRIA"
+                    status = "VICTORY"
                 else:
                     icon = "🔴"
-                    status = "DERROTA"
+                    status = "DEFEAT"
 
-                # 2. Dados da partida
-                mapa = match['mapname'].replace('de_', '').capitalize()
+                # 2. Match data
+                map_name = match['mapname'].replace('de_', '').capitalize()
                 score = f"{match['map_score1']}-{match['map_score2']}"
                 
-                # 3. Estatísticas Individuais
+                # 3. Individual Stats
                 total_rounds = match['map_score1'] + match['map_score2']
                 adr = match['damage'] / total_rounds if total_rounds > 0 else 0
                 kd = match['kills'] / match['deaths'] if match['deaths'] > 0 else match['kills']
                 
-                # 4. Pontos (Cálculo)
+                # 4. Points (Calculation)
                 bonus = max(0, min(20, int((adr / 100) * 20)))
                 pts = (30 + bonus) if won else (-50 + bonus)
                 pts_str = f"+{pts}" if pts > 0 else str(pts)
                 
-                # 5. Montagem do Campo Visual
-                # Título: Ícone | Mapa (Placar)
-                field_name = f"{icon} {status} | {mapa} ({score})"
+                # 5. Field Assembly
+                field_name = f"{icon} {status} | {map_name} ({score})"
                 
-                # Texto: Formatado com Blockquote (>)
-                # K/D/A: 20/10/5 • K/D: 2.0 • ADR: 100 • +35 pts
                 field_value = (
                     f"> 🔫 **K/D/A:** `{match['kills']}/{match['deaths']}/{match['assists']}`\n"
                     f"> 📊 **Stats:** `{kd:.2f} KD` • `{adr:.0f} ADR`\n"
@@ -534,14 +530,13 @@ class RankingCog(commands.Cog):
 
                 embed.add_field(name=field_name, value=field_value, inline=False)
 
-            embed.set_footer(text="MixBot System • Histórico detalhado", icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
+            embed.set_footer(text="MixBot System • Detailed History", icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
             await ctx.send(embed=embed)
 
         except Exception as e:
-            # logger.error(f"❌ Erro no comando historico: {e}") # Descomente se tiver logger
-            print(f"Erro historico: {e}")
-            await ctx.send("❌ Erro ao buscar histórico.")
+            print(f"History error: {e}")
+            await ctx.send("❌ Error fetching history.")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(RankingCog(bot))
-    logger.debug("RankingCog carregado")
+    logger.debug("RankingCog loaded")

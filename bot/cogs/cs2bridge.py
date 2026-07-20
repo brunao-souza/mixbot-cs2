@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import re
 import secrets
@@ -42,14 +42,14 @@ from bot.utils.cs2 import send_rcon
 
 AlertKind = Literal["admin", "completer"]
 
-ADMIN_ALERT_KEYWORD = "pedido de admin"
-COMPLETER_ALERT_KEYWORD = "pedido de substituto"
-REPLY_BUTTON_LABEL = "Responder no jogo"
-OPEN_CHAT_LABEL = "Abrir conversa"
-PAUSE_LABEL = "Pausar"
-UNPAUSE_LABEL = "Despausar"
-END_CALL_LABEL = "Encerrar"
-ACCEPT_BUTTON_LABEL = "Aceitar substituicao"
+ADMIN_ALERT_KEYWORD = "admin request"
+COMPLETER_ALERT_KEYWORD = "substitute request"
+REPLY_BUTTON_LABEL = "Reply in game"
+OPEN_CHAT_LABEL = "Open chat"
+PAUSE_LABEL = "Pause"
+UNPAUSE_LABEL = "Unpause"
+END_CALL_LABEL = "Close"
+ACCEPT_BUTTON_LABEL = "Accept substitution"
 REPLY_BUTTON_STYLE = discord.ButtonStyle.primary
 OPEN_CHAT_STYLE = discord.ButtonStyle.secondary
 PAUSE_BUTTON_STYLE = discord.ButtonStyle.secondary
@@ -66,12 +66,13 @@ OPEN_CHAT_CUSTOM_ID = "cs2bridge:openchat:admin"
 ADMIN_PAUSE_CUSTOM_ID = "cs2bridge:pause:admin"
 ADMIN_CLOSE_CUSTOM_ID = "cs2bridge:close:admin"
 ACCEPT_CUSTOM_ID = "cs2bridge:accept:completer"
-SERVER_ID_PATTERN = re.compile(r"^\s*Servidor:\s*`([^`]+)`", re.IGNORECASE | re.MULTILINE)
-MATCH_ID_PATTERN = re.compile(r"^\s*Partida:\s*`([^`]+)`", re.IGNORECASE | re.MULTILINE)
-TEAM_PATTERN = re.compile(r"^\s*Time:\s*\*?\*?(.+?)\*?\*?\s*$", re.IGNORECASE | re.MULTILINE)
+# Patterns used to parse alert messages from MatchZy plugin
+SERVER_ID_PATTERN = re.compile(r"^\s*Server:\s*`([^`]+)`", re.IGNORECASE | re.MULTILINE)
+MATCH_ID_PATTERN = re.compile(r"^\s*Match:\s*`([^`]+)`", re.IGNORECASE | re.MULTILINE)
+TEAM_PATTERN = re.compile(r"^\s*Team:\s*\*?\*?(.+?)\*?\*?\s*$", re.IGNORECASE | re.MULTILINE)
 ABANDONED_STEAMID_PATTERN = re.compile(r"abandon\w*.*?\(`(\d{16,20})`\)", re.IGNORECASE)
 ABANDONED_NAME_PATTERN = re.compile(
-    r"jogador que abandon\w*:\s*\*\*(.+?)\*\*\s*\(`\d{16,20}`\)",
+    r"player who abandoned:\s*\*\*(.+?)\*\*\s*\(`\d{16,20}`\)",
     re.IGNORECASE,
 )
 ROLE_MENTION_PATTERN = re.compile(r"<@&\d+>")
@@ -98,11 +99,11 @@ def _sanitize_rcon_message(raw: str) -> str:
 
 class CS2ReplyModal(discord.ui.Modal, title=REPLY_BUTTON_LABEL):
     reply_text = discord.ui.TextInput(
-        label="Mensagem",
+        label="Message",
         style=discord.TextStyle.short,
         max_length=REPLY_MAX_CHARS,
         required=True,
-        placeholder="Escreva uma resposta curta para o chat do jogo.",
+        placeholder="Write a short reply for the in-game chat.",
     )
 
     def __init__(self, cog: "CS2BridgeCog", alert_kind: AlertKind, server_id: str):
@@ -238,7 +239,7 @@ class CS2BridgeCog(commands.Cog):
             self.bot.add_view(CS2ReplyView(self, "completer"))
             self.bot.add_view(CS2CompleterAcceptView(self))
             setattr(self.bot, "_cs2bridge_views_registered", True)
-        logger.info("\u2705 cs2bridge: handlers HTTP /cs2/chat e /cs2/bridge/poll registrados")
+        logger.info("\u2705 cs2bridge: HTTP handlers /cs2/chat and /cs2/bridge/poll registered")
 
     def cog_unload(self) -> None:
         if hasattr(self.bot, "cs2bridge_http_handler"):
@@ -248,23 +249,23 @@ class CS2BridgeCog(commands.Cog):
 
     def _log_config_warnings(self) -> None:
         if not CS2_BRIDGE_INBOX_CHANNEL_ID:
-            logger.info("cs2bridge: CS2_BRIDGE_INBOX_CHANNEL_ID nao configurado (modo legado de alerta direto)")
+            logger.info("cs2bridge: CS2_BRIDGE_INBOX_CHANNEL_ID not configured (legacy direct alert mode)")
         if not DISCORD_ADMIN_ALERT_CHANNEL_ID:
-            logger.warning("cs2bridge: DISCORD_ADMIN_ALERT_CHANNEL_ID nao configurado")
+            logger.warning("cs2bridge: DISCORD_ADMIN_ALERT_CHANNEL_ID not configured")
         if not DISCORD_COMPLETER_ALERT_CHANNEL_ID and not CANAL_FILA_ID:
-            logger.warning("cs2bridge: DISCORD_COMPLETER_ALERT_CHANNEL_ID/CANAL_FILA_ID nao configurados")
+            logger.warning("cs2bridge: DISCORD_COMPLETER_ALERT_CHANNEL_ID/CANAL_FILA_ID not configured")
         if DISCORD_CHAT_RELAY_CHANNEL_ID:
-            logger.info("\U0001F4AC cs2bridge: relay global desativado por padrao; chat aparece apenas com conversa aberta")
+            logger.info("\U0001F4AC cs2bridge: global relay disabled by default; chat appears only with open conversation")
         if not DISCORD_CALLADMIN_ROLE_ID:
-            logger.warning("cs2bridge: DISCORD_CALLADMIN_ROLE_ID nao configurado (usando fallback STAFF_ROLE_IDS)")
+            logger.warning("cs2bridge: DISCORD_CALLADMIN_ROLE_ID not configured (falling back to STAFF_ROLE_IDS)")
         if not DISCORD_COMPLETER_ROLE_ID:
-            logger.warning("cs2bridge: DISCORD_COMPLETER_ROLE_ID nao configurado (usando fallback STAFF_ROLE_IDS)")
+            logger.warning("cs2bridge: DISCORD_COMPLETER_ROLE_ID not configured (falling back to STAFF_ROLE_IDS)")
         if not DISCORD_CALLADMIN_ROLE_ID and not DISCORD_COMPLETER_ROLE_ID and not STAFF_ROLE_IDS:
-            logger.warning("cs2bridge: nenhum cargo configurado para resposta (defina *_ROLE_ID ou STAFF_ROLE_IDS)")
+            logger.warning("cs2bridge: no role configured for response (set *_ROLE_ID or STAFF_ROLE_IDS)")
         if not (RCON_HOST and RCON_PORT and RCON_PASSWORD):
-            logger.warning("cs2bridge: RCON_HOST/RCON_PORT/RCON_PASSWORD incompletos")
+            logger.warning("cs2bridge: RCON_HOST/RCON_PORT/RCON_PASSWORD incomplete")
         if not CS2_SHARED_KEY:
-            logger.warning("cs2bridge: CS2_SHARED_KEY nao configurado")
+            logger.warning("cs2bridge: CS2_SHARED_KEY not configured")
 
     def _detect_alert_kind(self, channel_id: int, content: str) -> AlertKind | None:
         lowered = (content or "").lower()
@@ -515,10 +516,10 @@ class CS2BridgeCog(commands.Cog):
     def _display_team_label(self, team: str) -> str:
         normalized = self._coerce_team_label(team)
         if normalized == "team1":
-            return "Time 1"
+            return "Team 1"
         if normalized == "team2":
-            return "Time 2"
-        return _one_line(team, 64) or "Nao definido"
+            return "Team 2"
+        return _one_line(team, 64) or "Not defined"
 
     async def _resolve_live_mix_session(self, server_key: str, matchid: str = "") -> tuple[str, dict] | tuple[None, None]:
         try:
@@ -664,7 +665,7 @@ class CS2BridgeCog(commands.Cog):
                     await abandoned_member.move_to(None)
                 except Exception as exc:
                     logger.warning(
-                        f"VOICE move falhou ({session_server_id}:completer-disconnect-old): "
+                        f"VOICE move failed ({session_server_id}:completer-disconnect-old): "
                         f"{abandoned_member.id} | {type(exc).__name__}: {exc}"
                     )
 
@@ -1243,9 +1244,9 @@ class CS2BridgeCog(commands.Cog):
             else:
                 fallback_view = CS2ReplyView(self, alert_kind)
             server_id = self._extract_server_id(message.content or "")
-            fallback_text = "Abrir conversa:" if alert_kind == "admin" else "Responder no jogo:"
+            fallback_text = "Open conversation:" if alert_kind == "admin" else "Reply in game:"
             if server_id:
-                fallback_text += f"\nServidor: `{server_id}`"
+                fallback_text += f"\nServer: `{server_id}`"
             await message.channel.send(fallback_text, view=fallback_view)
             self._processed_alert_messages.add(message.id)
         except Exception as exc:
@@ -1281,23 +1282,23 @@ class CS2BridgeCog(commands.Cog):
         except Exception as exc:
             logger.warning(f"cs2bridge: falha ao criar matchguardian_logs para admin: {exc}")
 
-        title = "Pedido de admin"
+        title = "Admin Request"
         if log_id > 0:
-            title = f"Pedido de admin #{log_id}"
+            title = f"Admin Request #{log_id}"
         is_live = bool(matchid) and not matchid.upper().startswith("SEM_MATCH")
 
         embed = discord.Embed(
             title=title,
-            description="Alerta recebido do servidor de CS2.",
+            description="Alert received from the CS2 server.",
             color=0xE67E22,
             timestamp=datetime.now(timezone.utc),
         )
         if server_id:
-            embed.add_field(name="Servidor", value=f"`{server_id}`", inline=True)
+            embed.add_field(name="Server", value=f"`{server_id}`", inline=True)
         if matchid:
-            embed.add_field(name="Partida", value=f"`{matchid}`", inline=True)
+            embed.add_field(name="Match", value=f"`{matchid}`", inline=True)
         if team_text:
-            embed.add_field(name="Time", value=team_text, inline=True)
+            embed.add_field(name="Team", value=team_text, inline=True)
 
         content_lines = []
         if mentions:
@@ -1330,7 +1331,7 @@ class CS2BridgeCog(commands.Cog):
     async def handle_open_chat_click(self, interaction: discord.Interaction) -> None:
         member = interaction.user
         if not isinstance(member, discord.Member):
-            await interaction.response.send_message("Acao disponivel apenas em servidor.", ephemeral=True)
+            await interaction.response.send_message("Action available only in server.", ephemeral=True)
             return
 
         if not self._is_valid_channel_or_thread_for_alert("admin", interaction.channel):
@@ -1349,7 +1350,7 @@ class CS2BridgeCog(commands.Cog):
 
         message = interaction.message
         if message is None:
-            await interaction.response.send_message("Mensagem de contexto nao encontrada.", ephemeral=True)
+            await interaction.response.send_message("Context message not found.", ephemeral=True)
             return
 
         server_id = self._extract_server_id_from_message(message)
@@ -1393,14 +1394,14 @@ class CS2BridgeCog(commands.Cog):
             self._set_chat_session(alias, target_channel.id, member.id)
         try:
             await target_channel.send(
-                f"Conversa CS2 aberta por {member.mention} para `{display_server or server_id}` "
-                f"(expira em {int(CHAT_SESSION_TTL_SECONDS/60)} min)."
+                f"CS2 conversation opened by {member.mention} for `{display_server or server_id}` "
+                f"(expires in {int(CHAT_SESSION_TTL_SECONDS/60)} min)."
             )
         except Exception:
             pass
 
         await interaction.response.send_message(
-            f"Conversa aberta para `{display_server or server_id}` em {target_channel.mention}.",
+            f"Conversation opened for `{display_server or server_id}` in {target_channel.mention}.",
             ephemeral=True,
         )
 
@@ -1415,7 +1416,7 @@ class CS2BridgeCog(commands.Cog):
     async def handle_admin_pause_click(self, interaction: discord.Interaction) -> None:
         member = interaction.user
         if not isinstance(member, discord.Member):
-            await interaction.response.send_message("Acao disponivel apenas em servidor.", ephemeral=True)
+            await interaction.response.send_message("Action available only in server.", ephemeral=True)
             return
         if not self._is_valid_channel_or_thread_for_alert("admin", interaction.channel):
             await interaction.response.send_message("Acao valida apenas em alerta admin.", ephemeral=True)
@@ -1426,7 +1427,7 @@ class CS2BridgeCog(commands.Cog):
 
         message = interaction.message
         if message is None:
-            await interaction.response.send_message("Mensagem de contexto nao encontrada.", ephemeral=True)
+            await interaction.response.send_message("Context message not found.", ephemeral=True)
             return
 
         meta = self._get_admin_meta(message)
@@ -1469,7 +1470,7 @@ class CS2BridgeCog(commands.Cog):
     async def handle_admin_close_click(self, interaction: discord.Interaction) -> None:
         member = interaction.user
         if not isinstance(member, discord.Member):
-            await interaction.response.send_message("Acao disponivel apenas em servidor.", ephemeral=True)
+            await interaction.response.send_message("Action available only in server.", ephemeral=True)
             return
         if not self._is_valid_channel_or_thread_for_alert("admin", interaction.channel):
             await interaction.response.send_message("Acao valida apenas em alerta admin.", ephemeral=True)
@@ -1480,7 +1481,7 @@ class CS2BridgeCog(commands.Cog):
 
         message = interaction.message
         if message is None:
-            await interaction.response.send_message("Mensagem de contexto nao encontrada.", ephemeral=True)
+            await interaction.response.send_message("Context message not found.", ephemeral=True)
             return
 
         meta = self._get_admin_meta(message)
@@ -1508,7 +1509,7 @@ class CS2BridgeCog(commands.Cog):
             self._chat_sessions_by_server.pop(alias, None)
         self._admin_meta_by_message.pop(int(message.id), None)
 
-        await interaction.response.send_message("Chamado encerrado e log salvo.", ephemeral=True)
+        await interaction.response.send_message("Call closed and log saved.", ephemeral=True)
 
         if isinstance(thread, discord.Thread):
             try:
@@ -1521,8 +1522,8 @@ class CS2BridgeCog(commands.Cog):
         except Exception:
             try:
                 closed_embed = discord.Embed(
-                    title="Chamado encerrado",
-                    description=f"Encerrado por {member.mention}.",
+                    title="Call closed",
+                    description=f"Closed by {member.mention}.",
                     color=0x95A5A6,
                     timestamp=datetime.now(timezone.utc),
                 )
@@ -1553,21 +1554,21 @@ class CS2BridgeCog(commands.Cog):
             )
             return
 
-        public_abandoned_label = abandoned_name or "Jogador desconectado"
+        public_abandoned_label = abandoned_name or "Disconnected player"
         pretty_team_text = self._display_team_label(team_text)
         embed = discord.Embed(
-            title="🚨 Pedido de Substituto",
+            title="🚨 Substitute Request",
             description=(
-                "Um jogador saiu da partida.\n"
-                "Clique em **Aceitar substituicao** para entrar automaticamente no lugar dele."
+                "A player has left the match.\n"
+                "Click **Accept substitution** to automatically take their place."
             ),
             color=0xF39C12,
             timestamp=datetime.now(timezone.utc),
         )
         if team_text:
-            embed.add_field(name="🎯 Time", value=f"`{pretty_team_text}`", inline=True)
-        embed.add_field(name="👤 Jogador", value=f"`{public_abandoned_label}`", inline=True)
-        embed.add_field(name="⚡ Status", value="`Aguardando substituto`", inline=False)
+            embed.add_field(name="🎯 Team", value=f"`{pretty_team_text}`", inline=True)
+        embed.add_field(name="👤 Player", value=f"`{public_abandoned_label}`", inline=True)
+        embed.add_field(name="⚡ Status", value="`Waiting for substitute`", inline=False)
 
         content_lines = []
         if mentions:
@@ -1618,7 +1619,7 @@ class CS2BridgeCog(commands.Cog):
         webapp_url = os.getenv("PROJECTMIX_API_URL", "").rstrip("/")
         bot_api_key = os.getenv("PROJECTMIX_BOT_API_KEY", "")
         if not webapp_url or not bot_api_key:
-            logger.debug("cs2bridge: PROJECTMIX_API_URL/BOT_API_KEY não configurados, relay desativado")
+            logger.debug("cs2bridge: PROJECTMIX_API_URL/BOT_API_KEY not configured, relay disabled")
             return
 
         endpoint = f"{webapp_url}/api/v1/completer/request"
@@ -1647,12 +1648,12 @@ class CS2BridgeCog(commands.Cog):
     async def handle_completer_accept_click(self, interaction: discord.Interaction) -> None:
         member = interaction.user
         if not isinstance(member, discord.Member):
-            await interaction.response.send_message("Acao disponivel apenas em servidor.", ephemeral=True)
+            await interaction.response.send_message("Action available only in server.", ephemeral=True)
             return
 
         message = interaction.message
         if message is None:
-            await interaction.response.send_message("Mensagem de contexto nao encontrada.", ephemeral=True)
+            await interaction.response.send_message("Context message not found.", ephemeral=True)
             return
 
         if message.id in self._claimed_completer_messages:
@@ -1718,7 +1719,7 @@ class CS2BridgeCog(commands.Cog):
                 )
                 return
             await interaction.response.send_message(
-                "Nao foi possivel identificar com seguranca o servidor deste pedido.",
+                "Could not securely identify the server for this request.",
                 ephemeral=True,
             )
             return
@@ -1768,18 +1769,18 @@ class CS2BridgeCog(commands.Cog):
                 server_cfg,
                 matchid_text,
             )
-            from_label = abandoned_name or "Jogador desconectado"
-            to_label = member.display_name or member.name or "Substituto"
+            from_label = abandoned_name or "Disconnected player"
+            to_label = member.display_name or member.name or "Substitute"
             pretty_team_label = self._display_team_label(team_label)
             embed = discord.Embed(
-                title="✅ Substituicao Confirmada",
-                description="A troca foi concluida e o novo jogador ja foi liberado para entrar na partida.",
+                title="✅ Substitution Confirmed",
+                description="The swap has been completed and the new player has been released to enter the match.",
                 color=0x27AE60,
                 timestamp=datetime.now(timezone.utc),
             )
-            embed.add_field(name="🔁 Troca", value=f"`{from_label} -> {to_label}`", inline=False)
-            embed.add_field(name="🎯 Time", value=f"`{pretty_team_label}`", inline=True)
-            embed.add_field(name="🎮 Conectar", value=f"```{connect_cmd}```", inline=False)
+            embed.add_field(name="🔁 Swap", value=f"`{from_label} -> {to_label}`", inline=False)
+            embed.add_field(name="🎯 Team", value=f"`{pretty_team_label}`", inline=True)
+            embed.add_field(name="🎮 Connect", value=f"```{connect_cmd}```", inline=False)
 
             if interaction.response.is_done():
                 await interaction.followup.send(
@@ -1816,7 +1817,7 @@ class CS2BridgeCog(commands.Cog):
         member = interaction.user
         if not isinstance(member, discord.Member):
             await interaction.response.send_message(
-                "Acao disponivel apenas em servidor.",
+                "Action available only in server.",
                 ephemeral=True,
             )
             return
@@ -1853,7 +1854,7 @@ class CS2BridgeCog(commands.Cog):
                 )
                 return
             await interaction.response.send_message(
-                "Nao foi possivel identificar com seguranca o servidor deste alerta. "
+                "Could not securely identify the server for this alert. "
                 "Verifique o identificador enviado pelo plugin.",
                 ephemeral=True,
             )
@@ -1871,7 +1872,7 @@ class CS2BridgeCog(commands.Cog):
         member = interaction.user
         if not isinstance(member, discord.Member):
             await interaction.response.send_message(
-                "Acao disponivel apenas em servidor.",
+                "Action available only in server.",
                 ephemeral=True,
             )
             return
@@ -1917,7 +1918,7 @@ class CS2BridgeCog(commands.Cog):
                 )
                 return
             await interaction.response.send_message(
-                "Falha ao resolver o servidor deste alerta. Envio cancelado por seguranca.",
+                "Failed to resolve the server for this alert. Send cancelled for security.",
                 ephemeral=True,
             )
             return

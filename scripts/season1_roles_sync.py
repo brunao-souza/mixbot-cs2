@@ -232,7 +232,7 @@ def resolve_role_ids(dc: DiscordClient, guild_id: str, roles: List[Dict], create
 
 
 def read_ranking_rows() -> List[Tuple[str, int, int]]:
-    """Lê o ranking atual do banco da Season 1 (players + ranking)."""
+    """Reads the current ranking from the Season 1 database (players + ranking)."""
     cfg = {
         "host": env("DB_HOST"),
         "user": env("DB_USER"),
@@ -301,20 +301,20 @@ def apply_or_preview(
 
     print("== Preview ==")
     print(f"guild_id={guild_id}")
-    print(f"Total jogadores no ranking: {len(rows)}")
+    print(f"Total players in ranking: {len(rows)}")
     for key in season_role_keys:
-        print(f"{key}: {len(cohorts[key])} candidatos")
+        print(f"{key}: {len(cohorts[key])} candidates")
 
     # Print top 10 for validation
-    print("\n== Top 10 jogadores (discord_id | rating | partidas) ==")
+    print("\n== Top 10 players (discord_id | rating | matches) ==")
     for i, (did, rating, total_matches) in enumerate(rows[:10], 1):
-        print(f"  #{i:2d}  discord_id={did}  rating={rating}  partidas={total_matches}")
+        print(f"  #{i:2d}  discord_id={did}  rating={rating}  matches={total_matches}")
 
-    print("\n== Reset roles existentes ==")
+    print("\n== Reset existing roles ==")
     for key in season_role_keys:
         rid = role_ids[key]
         members = dc.list_role_member_ids(guild_id, rid)
-        print(f"role {key} ({rid}): {len(members)} membros atualmente")
+        print(f"role {key} ({rid}): {len(members)} members currently")
         if not apply:
             continue
         removed_ok = 0
@@ -327,7 +327,7 @@ def apply_or_preview(
                 removed_fail += 1
         print(f"  removed_ok={removed_ok} removed_fail={removed_fail}")
 
-    print("\n== Atribuir roles ==")
+    print("\n== Assign roles ==")
     for key in season_role_keys:
         rid = role_ids[key]
         targets = cohorts[key]
@@ -374,7 +374,7 @@ def main() -> int:
     roles = dc.get_roles(guild_id)
     create_missing = bool(args.create_missing_roles and args.apply)
     if args.create_missing_roles and not args.apply:
-        print("Note: --create-missing-roles sem --apply roda apenas em preview (sem criar roles).")
+        print("Note: --create-missing-roles without --apply runs as preview only (no role creation).")
     role_ids = resolve_role_ids(dc, guild_id, roles, create_missing=create_missing)
 
     rows = read_ranking_rows()

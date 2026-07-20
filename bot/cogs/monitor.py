@@ -69,13 +69,13 @@ def _build_server_block_clean(server, session, db_match, get_progress_bar, bot):
     if is_live_db:
         s1 = db_match.get("team1_score") or 0
         s2 = db_match.get("team2_score") or 0
-        n1 = db_match.get("team1_name") or "Time 1"
-        n2 = db_match.get("team2_name") or "Time 2"
+        n1 = db_match.get("team1_name") or "Team 1"
+        n2 = db_match.get("team2_name") or "Team 2"
         map_raw = str(db_match.get("mapname", "unknown"))
         map_clean = format_monitor_map_name(map_raw)
         gotv_port = server["cs2"].get("gotv_port", server["cs2"]["port"])
 
-        # Fase / estado da partida (atualizado via webhooks)
+        # Phase / match state (updated via webhooks)
         phase = session.get("match_phase")
         overtime_num = int(session.get("match_overtime_num") or 0)
         pause_team = session.get("match_pause_team")
@@ -83,17 +83,17 @@ def _build_server_block_clean(server, session, db_match, get_progress_bar, bot):
         mvp = session.get("match_round_mvp")
 
         if phase == "knife":
-            status_icon = "🔪 **FACA**"
+            status_icon = "🔪 **KNIFE**"
         elif phase == "halftime":
-            status_icon = "☕ **INTERVALO**"
+            status_icon = "☕ **HALFTIME**"
         elif phase == "overtime":
             ot_label = f" #{overtime_num}" if overtime_num > 1 else ""
             status_icon = f"⚡ **OVERTIME{ot_label}**"
         elif phase == "paused":
             pause_label = f" — {pause_team}" if pause_team else ""
-            status_icon = f"⏸️ **PAUSADO{pause_label}**"
+            status_icon = f"⏸️ **PAUSED{pause_label}**"
         else:
-            status_icon = "🟡 **AO VIVO**"
+            status_icon = "🟡 **LIVE**"
 
         map_line = f"> 🗺️ **{map_clean}**"
         if round_num > 0 and phase not in ("knife", "halftime"):
@@ -116,28 +116,28 @@ def _build_server_block_clean(server, session, db_match, get_progress_bar, bot):
         if session.get("status") == "LIVE":
             host = str(session.get("runtime_host") or server["cs2"].get("host") or "").strip()
             gotv_port = int(session.get("runtime_gotv_port") or server["cs2"].get("gotv_port") or 0)
-            map_name = format_monitor_map_name(session.get("match_map") or "desconhecido")
+            map_name = format_monitor_map_name(session.get("match_map") or "unknown")
             if host and gotv_port > 0:
-                gotv_cmd = f"connect {host}:{gotv_port}" if gotv_port > 0 else "GOTV nao configurado."
-                status_icon = "🟡 **AGUARDANDO PLAYERS**"
+                gotv_cmd = f"connect {host}:{gotv_port}" if gotv_port > 0 else "GOTV not configured."
+                status_icon = "🟡 **WAITING FOR PLAYERS**"
                 details = (
                     f"> 🗺️ **{map_name}**\n"
-                    f"> 📺 **ASSISTIR:**\n"
+                    f"> 📺 **WATCH:**\n"
                     f"```{gotv_cmd}```"
                 )
                 return name, status_icon, details, None
-            status_msg = "Jogadores se conectando..."
+            status_msg = "Players connecting..."
         elif session.get("status") == "BOOTING":
-            status_msg = "Ligando servidor..."
+            status_msg = "Booting server..."
         else:
-            status_msg = "Votacao de Capitaes" if session.get("status") == "DRAFT" else "Vetando Mapas"
+            status_msg = "Captain Voting" if session.get("status") == "DRAFT" else "Map Veto"
             if session.get("status") == "ACCEPT":
-                status_msg = "Aguardando Jogadores..."
+                status_msg = "Waiting for Players..."
 
-        status_icon = "🟣 **PREPARANDO**"
+        status_icon = "🟣 **PREPARING**"
         details = (
-            f"> 🔨 **Fase:** {status_msg}\n"
-            f"> ⚠️ *Aguarde o inicio...*"
+            f"> 🔨 **Phase:** {status_msg}\n"
+            f"> ⚠️ *Please wait for the start...*"
         )
         return name, status_icon, details, None
 
@@ -150,14 +150,14 @@ def _build_server_block_clean(server, session, db_match, get_progress_bar, bot):
 
     bar = get_progress_bar(count)
     if count >= 10:
-        status_icon = "🔴 **SALA CHEIA**"
-        action_text = "Aguardando inicio..."
+        status_icon = "🔴 **ROOM FULL**"
+        action_text = "Waiting to start..."
     else:
-        status_icon = "🟢 **DISPONIVEL**"
-        action_text = "Entre na sala de voz!"
+        status_icon = "🟢 **AVAILABLE**"
+        action_text = "Join the voice room!"
 
     details = (
-        f"> 👥 **Jogadores:** `{count}/10`\n"
+        f"> 👥 **Players:** `{count}/10`\n"
         f"> {bar}\n"
         f"🔹 *{action_text}*"
     )
@@ -171,12 +171,12 @@ async def update_monitor_combined(bot, sessions, global_state, reset_session, ge
 
     msg = global_state["monitor_msgs"].get("combined")
     if not msg:
-        msg = await find_monitor_message(channel, "STATUS DOS SERVIDORES", bot.user)
+        msg = await find_monitor_message(channel, "SERVER STATUS", bot.user)
         if msg:
             global_state["monitor_msgs"]["combined"] = msg
 
     embed = discord.Embed(
-        title="🖥️ STATUS DOS SERVIDORES",
+        title="🖥️ SERVER STATUS",
         color=0x2B2D31,
         timestamp=datetime.now(),
     )
@@ -216,7 +216,7 @@ async def update_monitor_combined(bot, sessions, global_state, reset_session, ge
                     pass
                 db_match = None
         elif session.get("active") and session.get("status") == "LIVE" and not row:
-            # Sessao LIVE sem registro ativo no DB: limpa estado zumbi para nao poluir a embed.
+            # LIVE session without an active DB record: clean up zombie state so it doesn't pollute the embed.
             reset_session(s_id)
             try:
                 await clear_active_match(s_id)
@@ -241,10 +241,10 @@ async def update_monitor_combined(bot, sessions, global_state, reset_session, ge
     retake_online, retake_max = await get_retake_online()
     if retake_online is None or retake_max is None:
         retake_status = "🔴 OFFLINE"
-        retake_players = "👥 **Jogadores**: `0`"
+        retake_players = "👥 **Players**: `0`"
     else:
         retake_status = "🟢 ONLINE"
-        retake_players = f"👥 **Jogadores**: `{retake_online}`"
+        retake_players = f"👥 **Players**: `{retake_online}`"
 
     if visible_count > 0:
         embed.add_field(name="\u200b", value="\u200b", inline=False)
@@ -264,4 +264,4 @@ async def update_monitor_combined(bot, sessions, global_state, reset_session, ge
     except discord.NotFound:
         global_state["monitor_msgs"]["combined"] = await channel.send(embed=embed)
     except Exception as e:
-        print(f"Erro Monitor: {e}")
+        print(f"Monitor Error: {e}")

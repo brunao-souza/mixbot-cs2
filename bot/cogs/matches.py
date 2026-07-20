@@ -30,7 +30,7 @@ from bot.cogs.mix import (
     ALWAYS_ALLOW_STEAMID64,
     refresh_server_category_visibility,
 )
-from bot.cogs.fila import get_fila_cog
+from bot.cogs.fila import get_queue_cog
 from bot.cogs.monitor import update_monitor_combined
 from bot.cogs.ranking import build_ranking_embed
 from bot.cogs.denuncias import MatchFeedbackView
@@ -51,14 +51,14 @@ class MatchesCog(commands.Cog):
                 self._season_start_date = raw_cutoff
             except ValueError:
                 logger.warning(
-                    f"SEASON_START_DATE invalida ('{raw_cutoff}'). Backfill sem filtro de data."
+                    f"Invalid SEASON_START_DATE ('{raw_cutoff}'). Backfill without date filter."
                 )
 
     async def cog_load(self):
         self.check_matches.start()
         self.bot.loop.create_task(self.backfill_unposted_matches())
         setattr(self.bot, "match_webhook_handler", self.handle_match_webhook)
-        logger.debug("Monitoramento de partidas iniciado")
+        logger.debug("Match monitoring started")
 
     async def cog_unload(self):
         self.check_matches.cancel()
@@ -327,7 +327,7 @@ class MatchesCog(commands.Cog):
                     await refresh_server_category_visibility(self.bot, current_s_id, reason=f"{trigger}_match_end")
                     cleared_servers.append(current_s_id)
 
-            fila_cog = get_fila_cog(self.bot)
+            fila_cog = get_queue_cog(self.bot)
             if fila_cog:
                 await fila_cog.request_display_update()
                 await fila_cog.dispatch_ready_if_possible()
@@ -374,7 +374,7 @@ class MatchesCog(commands.Cog):
                 if not match_ended: continue
                 if await is_match_posted(match_id): continue
 
-                logger.info(f"⚡ Partida #{match_id} finalizada. Processando...")
+                logger.info(f"⚡ Match #{match_id} finished. Processing...")
 
                 await self._finalize_match_end(
                     int(match_id),
@@ -385,7 +385,7 @@ class MatchesCog(commands.Cog):
        
         except Exception as e:
             msg = f"#{match_id}" if match_id else "DB Error"
-            logger.error(f"❌ Erro no loop de partidas ({msg}): {e}")
+            logger.error(f"❌ Error in match loop ({msg}): {e}")
 
     @check_matches.before_loop
     async def before_check_matches(self):
@@ -401,7 +401,7 @@ class MatchesCog(commands.Cog):
             recent = await get_recent_mix_match_ids(20, start_date=self._season_start_date)
             if self._season_start_date:
                 logger.info(
-                    f"Backfill de partidas com filtro de season: partidas desde {self._season_start_date}"
+                    f"Match backfill with season filter: matches since {self._season_start_date}"
                 )
             for row in reversed(recent):
                 match_id = row.get("matchid")
@@ -424,7 +424,7 @@ class MatchesCog(commands.Cog):
                 await self.post_match_summary(channel, match_id, match, players)
                 await self.update_ranking_channel()
         except Exception as e:
-            logger.error(f"❌ Erro no backfill de partidas: {e}")
+            logger.error(f"❌ Error in match backfill: {e}")
 
     async def _release_runtime_for_match(
         self,
@@ -452,7 +452,7 @@ class MatchesCog(commands.Cog):
 
     @staticmethod
     def _runtime_to_session_id(runtime_id: str) -> Optional[str]:
-        """Converte runtime_id ('mix1') → chave de sessão ('server1')."""
+        """Converts runtime_id ('mix1') → session key ('server1')."""
         rid = runtime_id.strip().lower()
         for s_id, server in SERVERS.items():
             if server.get("runtime_id", "").lower() == rid:
@@ -462,10 +462,10 @@ class MatchesCog(commands.Cog):
     @staticmethod
     def _resolve_session_id(payload: dict) -> Optional[str]:
         """
-        Resolve a sessão a partir do payload.
-        1) Tenta via server_id (runtime_id → s_id)
-        2) Tenta via match_id (procura sessão que tem o match ativo)
-        3) Fallback: primeira sessão LIVE (único servidor ativo)
+        Resolves the session from the payload.
+        1) Tries via server_id (runtime_id → s_id)
+        2) Tries via match_id (looks for session with active match)
+        3) Fallback: first LIVE session (only one active server)
         """
         runtime_id = str(payload.get("server_id") or "").strip().lower()
         if runtime_id:
@@ -483,7 +483,7 @@ class MatchesCog(commands.Cog):
             except Exception:
                 pass
 
-        # Fallback: sessão que está LIVE
+        # Fallback: session that is LIVE
         live = [s for s, sess in sessions.items() if sess.get("status") == "LIVE" and sess.get("active")]
         if len(live) == 1:
             return live[0]
@@ -555,7 +555,7 @@ class MatchesCog(commands.Cog):
         match_id = self._payload_match_id(payload) or (sessions.get(s_id or "", {}).get("match_id"))
         logger.debug(f"WEBHOOK: round_ended server={runtime_id} s_id={s_id} match={match_id}")
         if s_id and s_id in sessions:
-            # Limpa fases transitórias de fim de round
+            # Clears transient end-of-round phases
             if sessions[s_id].get("match_phase") in ("knife", "halftime"):
                 sessions[s_id]["match_phase"] = None
             round_num = payload.get("round_num") or payload.get("round")
@@ -647,10 +647,10 @@ class MatchesCog(commands.Cog):
         if not s_id or s_id not in sessions:
             return web.json_response({"ok": True}, status=200)
 
-        # Payload pode trazer lista de players ou um único player
+        # Payload may carry a list of players or a single player
         players = payload.get("players") or payload.get("stats") or []
         if isinstance(payload.get("name"), str):
-            # formato de player único
+            # single player format
             players = [payload]
 
         current_mvp = sessions[s_id].get("match_round_mvp") or {}
@@ -781,7 +781,7 @@ class MatchesCog(commands.Cog):
                         losing_stats.append((m, int(p.get('damage') or 0)))
 
             sala_proximo = guild.get_channel(SALA_PROXIMO_ID)
-            fila_cog = get_fila_cog(self.bot)
+            fila_cog = get_queue_cog(self.bot)
 
             # 1) Registra vencedores para entrada prioritaria por dano.
             if fila_cog and winning_stats:
@@ -818,7 +818,7 @@ class MatchesCog(commands.Cog):
                 await fila_cog.request_display_update()
 
         except Exception as e:
-            logger.error(f"❌ Erro na movimentação final: {e}")
+            logger.error(f"❌ Error in final movement: {e}")
         finally:
             pass
 
@@ -880,7 +880,7 @@ class MatchesCog(commands.Cog):
         try: mvp = max(filtered_players, key=lambda p: int(p.get('damage') or 0))
         except: mvp = {}
         
-        embed = discord.Embed(title="📋 Resumo da Partida", color=0x2ecc71)
+        embed = discord.Embed(title="📋 Match Summary", color=0x2ecc71)
         if MAP_IMAGES.get(map_raw): embed.set_thumbnail(url=MAP_IMAGES[map_raw])
         embed.add_field(name="Resultado", value=f"{em1} **{cap1}** `{s1} — {s2}` **{cap2}** {em2}", inline=False)
         embed.add_field(name="👑 MVP", value=f"**{mvp.get('name', 'Unknown')}** ({int(mvp.get('damage') or 0)} dmg)", inline=False)
@@ -905,7 +905,7 @@ class MatchesCog(commands.Cog):
             link_map = f"de_{link_map}"
         demo_base = DEMO_DOWNLOAD_URL or ""
         link = f"{demo_base}/match_{match.get('matchid')}_{link_map}.dem.gz"
-        embed.add_field(name="📥 Download Demo", value=f"[Clique aqui]({link})", inline=False)
+        embed.add_field(name="📥 Demo Download", value=f"[Click here]({link})", inline=False)
         server_name = None
         if server_id and server_id in SERVERS:
             server_name = SERVERS[server_id].get("name") or server_id.upper()
@@ -927,14 +927,14 @@ class MatchesCog(commands.Cog):
             embed = build_ranking_embed(
                 top_players,
                 guild,
-                "🏆 RANKING TEMPORADA ATUAL",
-                "⭐**LÍDERES(TOP 3)**",
-                "📊**CLASSIFICAÇÃO**",
+                "🏆 CURRENT SEASON RANKING",
+                "⭐**LEADERS (TOP 3)**",
+                "📊**STANDINGS**",
                 "https://media.discordapp.net/attachments/1452985230565834804/1466928923702071339/LogoMixLeve.png"
             )
             await channel.purge(limit=5)
             await channel.send(embed=embed)
-        except Exception as e: logger.error(f"❌ Ranking Error: {e}")
+        except Exception as e:         logger.error(f"❌ Ranking error: {e}")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MatchesCog(bot))

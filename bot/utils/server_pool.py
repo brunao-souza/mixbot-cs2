@@ -129,7 +129,7 @@ class ServerPool:
         try:
             active_rows = await get_active_matches()
         except Exception as exc:
-            logger.warning(f"POOL: falha ao consultar active_matches para reconciliar busy runtimes: {exc}")
+            logger.warning(f"POOL: failed to query active_matches to reconcile busy runtimes: {exc}")
             active_rows = []
 
         active_match_ids = {
@@ -152,19 +152,19 @@ class ServerPool:
                     finished = await is_match_finished(match_id)
                 except Exception as exc:
                     logger.warning(
-                        f"POOL: falha ao verificar fim da partida match={match_id} runtime={runtime_id}: {exc}"
+                        f"POOL: failed to check match end match={match_id} runtime={runtime_id}: {exc}"
                     )
 
             if finished:
                 logger.warning(
-                    f"POOL: limpando alocacao stale runtime={runtime_id} match={match_id} "
+                    f"POOL: clearing stale allocation runtime={runtime_id} match={match_id} "
                     f"lobby={row.get('lobby_server_id')} source={row.get('source')} reason=match_finished"
                 )
                 try:
                     await clear_match_runtime_server(match_id)
                 except Exception as exc:
                     logger.error(
-                        f"POOL: falha ao limpar alocacao stale runtime={runtime_id} match={match_id}: {exc}"
+                        f"POOL: failed to clear stale allocation runtime={runtime_id} match={match_id}: {exc}"
                     )
                     effective_rows.append(row)
                 continue
@@ -229,7 +229,7 @@ class ServerPool:
         async with self._lock:
             locked = await acquire_named_lock(self._db_lock_key, timeout_seconds=5)
             if not locked:
-                raise RuntimeError("Nao foi possivel obter lock global para alocar servidor.")
+                raise RuntimeError("Could not obtain global lock to allocate server.")
             try:
                 existing = await get_match_runtime_server(int(match_id))
                 if existing:
@@ -253,11 +253,11 @@ class ServerPool:
                     if slot and self._supports_mode(slot, source) and preferred_runtime_id not in busy_ids:
                         chosen_slot = slot
                     else:
-                        reason = "inexistente"
+                        reason = "not_found"
                         if slot and not self._supports_mode(slot, source):
-                            reason = f"nao_suporta_modo:{source}"
+                            reason = f"unsupported_mode:{source}"
                         elif slot and preferred_runtime_id in busy_ids:
-                            reason = "ocupado"
+                            reason = "busy"
                         blocker = next(
                             (
                                 row for row in busy_rows
@@ -273,15 +273,15 @@ class ServerPool:
                             )
                         if strict_preferred_runtime:
                             logger.warning(
-                                f"POOL: runtime preferido indisponivel "
-                                f"runtime={preferred_runtime_id} motivo={reason}; fallback bloqueado.{blocker_text}"
+                                f"POOL: preferred runtime unavailable "
+                                f"runtime={preferred_runtime_id} reason={reason}; fallback blocked.{blocker_text}"
                             )
                             raise PreferredRuntimeUnavailableError(
-                                f"Runtime preferido indisponivel: {preferred_runtime_id} ({reason})"
+                                f"Preferred runtime unavailable: {preferred_runtime_id} ({reason})"
                             )
                         logger.warning(
-                            f"POOL: runtime preferido indisponivel "
-                            f"runtime={preferred_runtime_id} motivo={reason}; buscando fallback livre.{blocker_text}"
+                            f"POOL: preferred runtime unavailable "
+                            f"runtime={preferred_runtime_id} reason={reason}; looking for free fallback.{blocker_text}"
                         )
 
                 if not chosen_slot:
@@ -294,7 +294,7 @@ class ServerPool:
                         break
 
                 if not chosen_slot:
-                    raise NoServerAvailableError("Nenhum servidor livre no pool.")
+                    raise NoServerAvailableError("No free server in the pool.")
 
                 await bind_match_runtime_server(
                     match_id=int(match_id),
@@ -304,7 +304,7 @@ class ServerPool:
                     lobby_server_id=lobby_server_id,
                 )
                 logger.info(
-                    f"POOL: match={match_id} source={source} alocado={chosen_slot.runtime_id} lobby={lobby_server_id}"
+                    f"POOL: match={match_id} source={source} allocated={chosen_slot.runtime_id} lobby={lobby_server_id}"
                 )
                 return self._allocation_payload(
                     chosen_slot,
@@ -327,7 +327,7 @@ class ServerPool:
         async with self._lock:
             locked = await acquire_named_lock(self._db_lock_key, timeout_seconds=5)
             if not locked:
-                raise RuntimeError("Nao foi possivel obter lock global para liberar servidor.")
+                raise RuntimeError("Could not obtain global lock to release server.")
             try:
                 row = await get_match_runtime_server(int(match_id))
                 if not row:
@@ -349,10 +349,10 @@ class ServerPool:
                         }
                         await send_rcon(_rcon_cfg, "changelevel de_mirage", log_errors=False)
                         logger.info(
-                            f"POOL_RELEASE: changelevel de_mirage enviado para match={match_id} runtime={runtime_id}"
+                            f"POOL_RELEASE: changelevel de_mirage sent for match={match_id} runtime={runtime_id}"
                         )
                     except Exception as _cl_err:
-                        logger.warning(f"POOL_RELEASE: falha ao enviar changelevel match={match_id}: {_cl_err}")
+                        logger.warning(f"POOL_RELEASE: failed to send changelevel match={match_id}: {_cl_err}")
 
                 if RUNTIME_USE_RCON_LOAD_ONLY:
                     should_stop = bool(stop_session) if stop_session is not None else bool(restart_runtime)
@@ -377,13 +377,13 @@ class ServerPool:
                         if not force_clear_mapping_on_stop_error:
                             raise
                         logger.error(
-                            f"POOL: stop runtime falhou para match={match_id} runtime={runtime_id} "
+                            f"POOL: stop runtime failed for match={match_id} runtime={runtime_id} "
                             f"service={slot.service_name if slot else ''} legacy_session={tmux_session}; "
-                            f"limpando mapeamento mesmo assim ({reason}): {exc}"
+                            f"clearing mapping anyway ({reason}): {exc}"
                         )
                 else:
                     logger.info(
-                        f"POOL_RELEASE: match={match_id} runtime={runtime_id} session_preexistente; "
+                        f"POOL_RELEASE: match={match_id} runtime={runtime_id} session_preexisting; "
                         "skip kill-session."
                     )
 
@@ -399,18 +399,18 @@ class ServerPool:
                             await asyncio.sleep(float(RUNTIME_BOOT_DELAY_SECONDS))
                         restarted = True
                         logger.info(
-                            f"POOL: runtime reiniciado match={match_id} runtime={runtime_id} "
+                            f"POOL: runtime restarted match={match_id} runtime={runtime_id} "
                             f"tmux={tmux_session} reason={reason}"
                         )
                     except Exception as exc:
                         restart_error = exc
                         logger.error(
-                            f"POOL: falha ao reiniciar runtime match={match_id} runtime={runtime_id} "
+                            f"POOL: failed to restart runtime match={match_id} runtime={runtime_id} "
                             f"tmux={tmux_session} reason={reason}: {exc}"
                         )
 
                 logger.info(
-                    f"POOL: match={match_id} liberado runtime={runtime_id} tmux={tmux_session} "
+                    f"POOL: match={match_id} released runtime={runtime_id} tmux={tmux_session} "
                     f"stopped={stopped} restarted={restarted} reason={reason}"
                 )
                 result = {
@@ -449,7 +449,7 @@ class ServerPool:
             json_path = await asyncio.to_thread(write_match_json_atomic, int(match_id), payload)
             slot = self._slots.get(str(allocation.get("runtime_id") or ""))
             if not slot:
-                raise RuntimeError(f"Runtime alocado inexistente no pool: {allocation.get('runtime_id')}")
+                raise RuntimeError(f"Allocated runtime not found in pool: {allocation.get('runtime_id')}")
 
             map_path = (payload.get("maplist") or [None])[0]
             if RUNTIME_USE_RCON_LOAD_ONLY:
@@ -460,8 +460,8 @@ class ServerPool:
                     await asyncio.sleep(float(RUNTIME_BOOT_DELAY_SECONDS))
                 if not str(allocation["tmux_session"] or "").strip():
                     raise RuntimeError(
-                        f"Runtime {slot.runtime_id} sem TMUX configurado para fallback de console. "
-                        "Use RUNTIME_USE_RCON_LOAD_ONLY=true ou configure POOL_Sx_TMUX_SESSION."
+                        f"Runtime {slot.runtime_id} has no TMUX configured for console fallback. "
+                        "Use RUNTIME_USE_RCON_LOAD_ONLY=true or configure POOL_Sx_TMUX_SESSION."
                     )
                 load_cmd = await asyncio.to_thread(load_match_in_tmux, allocation["tmux_session"], int(match_id))
 
@@ -469,7 +469,7 @@ class ServerPool:
             allocation["load_cmd"] = load_cmd
             return allocation
         except Exception:
-            logger.exception(f"POOL: falha no start/load match={match_id}; liberando runtime.")
+            logger.exception(f"POOL: failed during start/load match={match_id}; releasing runtime.")
             try:
                 await self.release_server_for_match(
                     int(match_id),
@@ -477,7 +477,7 @@ class ServerPool:
                     force_clear_mapping_on_stop_error=True,
                 )
             except Exception:
-                logger.exception(f"POOL: falha ao liberar runtime apos start_failure match={match_id}")
+                logger.exception(f"POOL: failed to release runtime after start_failure match={match_id}")
             raise
 
     async def boot_runtime_for_match(
@@ -497,7 +497,7 @@ class ServerPool:
         )
         slot = self._slots.get(str(allocation.get("runtime_id") or "").strip())
         if not slot:
-            raise RuntimeError(f"Runtime alocado inexistente no pool: {allocation.get('runtime_id')}")
+            raise RuntimeError(f"Allocated runtime not found in pool: {allocation.get('runtime_id')}")
 
         try:
             already_online = await self._runtime_online(
@@ -517,7 +517,7 @@ class ServerPool:
             allocation["already_online"] = bool(already_online)
             return allocation
         except Exception:
-            logger.exception(f"POOL: falha ao iniciar runtime match={match_id}; liberando runtime.")
+            logger.exception(f"POOL: failed to start runtime match={match_id}; releasing runtime.")
             try:
                 await self.release_server_for_match(
                     int(match_id),
@@ -525,7 +525,7 @@ class ServerPool:
                     force_clear_mapping_on_stop_error=True,
                 )
             except Exception:
-                logger.exception(f"POOL: falha ao liberar runtime apos boot_failure match={match_id}")
+                logger.exception(f"POOL: failed to release runtime after boot_failure match={match_id}")
             raise
 
     async def load_match_on_allocated_runtime(
@@ -535,12 +535,12 @@ class ServerPool:
     ) -> Dict[str, Any]:
         row = await get_match_runtime_server(int(match_id))
         if not row:
-            raise NoServerAvailableError(f"Nenhuma alocacao encontrada para match={match_id}")
+            raise NoServerAvailableError(f"No allocation found for match={match_id}")
 
         runtime_id = str(row.get("runtime_server_id") or "").strip()
         slot = self._slots.get(runtime_id)
         if not slot:
-            raise RuntimeError(f"Runtime alocado inexistente no pool: {runtime_id}")
+            raise RuntimeError(f"Allocated runtime not found in pool: {runtime_id}")
 
         tmux_session = str(row.get("tmux_session") or slot.tmux_session).strip()
         try:
@@ -577,14 +577,14 @@ class ServerPool:
                 "load_cmd": load_cmd,
             }
         except Exception:
-            logger.exception(f"POOL: falha ao carregar match em runtime alocado match={match_id}")
+            logger.exception(f"POOL: failed to load match on allocated runtime match={match_id}")
             raise
 
     async def _load_match_via_rcon(self, slot: RuntimeSlot, match_id: int, map_path: Optional[str] = None) -> str:
         def _response_preview(value: Optional[str], max_len: int = 220) -> str:
             text = str(value or "").replace("\n", " ").replace("\r", " ").strip()
             if not text:
-                return "<vazio>"
+                return "<empty>"
             if len(text) > max_len:
                 return text[:max_len] + "..."
             return text
@@ -627,7 +627,7 @@ class ServerPool:
                 workshop_cmd = f"host_workshop_map {workshop_id}"
                 logger.info(
                     f"POOL_LOAD: match={match_id} runtime={slot.runtime_id} "
-                    f"workshop=True cmd={workshop_cmd}; aguardando {_WORKSHOP_MAP_CHANGE_DELAY}s para reload do mapa."
+                    f"workshop=True cmd={workshop_cmd}; waiting {_WORKSHOP_MAP_CHANGE_DELAY}s for map reload."
                 )
                 await send_rcon(server_config, workshop_cmd, log_errors=False)
                 await asyncio.sleep(_WORKSHOP_MAP_CHANGE_DELAY)
@@ -645,7 +645,7 @@ class ServerPool:
                 )
                 return load_cmd
             logger.warning(
-                f"POOL_LOAD: match={match_id} runtime={slot.runtime_id} method=rcon status=falha "
+                f"POOL_LOAD: match={match_id} runtime={slot.runtime_id} method=rcon status=fail "
                 f"attempt={attempt}/{retries} target={slot.host}:{slot.port} "
                 f"resp={_response_preview(response)}"
             )
@@ -656,8 +656,8 @@ class ServerPool:
         online = await self._runtime_online(slot, tmux_session=tmux_session)
         if not online and str(slot.start_script or "").strip():
             logger.warning(
-                f"POOL_LOAD: match={match_id} runtime={slot.runtime_id} rcon=sem_resposta runtime=offline; "
-                f"tentando start_script={slot.start_script} service={slot.service_name}."
+                f"POOL_LOAD: match={match_id} runtime={slot.runtime_id} rcon=no_response runtime=offline; "
+                f"trying start_script={slot.start_script} service={slot.service_name}."
             )
             try:
                 await self._start_runtime_with_online_check(slot, tmux_session=tmux_session)
@@ -665,7 +665,7 @@ class ServerPool:
                     await asyncio.sleep(float(RUNTIME_BOOT_DELAY_SECONDS))
             except Exception:
                 logger.exception(
-                    f"POOL: falha ao iniciar runtime apos erro de RCON runtime={slot.runtime_id} "
+                    f"POOL: failed to start runtime after RCON error runtime={slot.runtime_id} "
                     f"service={slot.service_name} legacy_session={tmux_session}"
                 )
             else:
@@ -680,7 +680,7 @@ class ServerPool:
                 if retry is not None:
                     logger.warning(
                         f"POOL_LOAD: match={match_id} runtime={slot.runtime_id} method=rcon_retry "
-                        f"status=erro_textual target={slot.host}:{slot.port} "
+                        f"status=text_error target={slot.host}:{slot.port} "
                         f"cmd={load_cmd} resp={_response_preview(retry)}"
                     )
             online = await self._runtime_online(slot, tmux_session=tmux_session)
@@ -688,19 +688,19 @@ class ServerPool:
         if online and tmux_session:
             logger.info(
                 f"POOL_LOAD: match={match_id} runtime={slot.runtime_id} "
-                f"method=tmux_fallback reason=rcon_sem_resposta session={tmux_session}"
+                f"method=tmux_fallback reason=rcon_no_response session={tmux_session}"
             )
             return await asyncio.to_thread(load_match_in_tmux, tmux_session, int(match_id))
 
         if online and not tmux_session:
             raise RuntimeError(
-                f"Falha ao executar load via RCON no runtime={slot.runtime_id} ({slot.host}:{slot.port}); "
-                "runtime online, mas sem TMUX configurado para fallback de console."
+                f"Failed to execute load via RCON on runtime={slot.runtime_id} ({slot.host}:{slot.port}); "
+                "runtime online, but no TMUX configured for console fallback."
             )
 
         raise RuntimeError(
-            f"Falha ao executar load via RCON no runtime={slot.runtime_id} ({slot.host}:{slot.port}); "
-            "RCON sem resposta e runtime offline."
+            f"Failed to execute load via RCON on runtime={slot.runtime_id} ({slot.host}:{slot.port}); "
+            "RCON unresponsive and runtime offline."
         )
 
     async def _runtime_online(self, slot: RuntimeSlot, tmux_session: Optional[str] = None) -> bool:
@@ -734,12 +734,12 @@ class ServerPool:
     async def _start_runtime_with_online_check(self, slot: RuntimeSlot, tmux_session: Optional[str] = None) -> None:
         legacy_session = str(tmux_session or slot.tmux_session or "").strip()
         logger.info(
-            f"POOL: iniciando runtime script={slot.start_script} service={slot.service_name} "
+            f"POOL: starting runtime script={slot.start_script} service={slot.service_name} "
             f"legacy_session={legacy_session}"
         )
         try:
             await asyncio.to_thread(start_runtime_server, slot.start_script)
-            logger.info(f"POOL: start finalizado script={slot.start_script} service={slot.service_name}")
+            logger.info(f"POOL: start finished script={slot.start_script} service={slot.service_name}")
             return
         except Exception as exc:
             msg = str(exc or "").lower()
@@ -747,16 +747,16 @@ class ServerPool:
             if is_timeout:
                 wait_seconds = max(1, int(RUNTIME_ONLINE_GRACE_SECONDS))
                 logger.warning(
-                    f"POOL: start timeout ({slot.start_script}); aguardando ate {wait_seconds}s "
-                    f"por runtime online (service={slot.service_name} legacy_session={legacy_session}) "
-                    "antes de falhar."
+                    f"POOL: start timeout ({slot.start_script}); waiting up to {wait_seconds}s "
+                    f"for runtime online (service={slot.service_name} legacy_session={legacy_session}) "
+                    "before failing."
                 )
                 for attempt in range(wait_seconds):
                     online = await self._runtime_online(slot, tmux_session=legacy_session)
                     if online:
                         logger.warning(
-                            f"POOL: start timeout ({slot.start_script}), mas runtime ficou online "
-                            f"(service={slot.service_name} legacy_session={legacy_session}); seguindo."
+                            f"POOL: start timeout ({slot.start_script}), but runtime came online "
+                            f"(service={slot.service_name} legacy_session={legacy_session}); continuing."
                         )
                         return
                     if attempt < wait_seconds - 1:

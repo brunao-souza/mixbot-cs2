@@ -20,24 +20,24 @@ def generate_matchzy_config(
     always_allow_name: Optional[str] = None
 ) -> str:
     """
-    Gera configuração JSON para o MatchZy.
+    Generates JSON configuration for MatchZy.
     
     Args:
-        match_id: ID único da partida
-        captain1_name: Nome do capitão do Time 1
-        captain2_name: Nome do capitão do Time 2
-        team1_players: Lista de jogadores do Time 1 com name e steamid64
-        team2_players: Lista de jogadores do Time 2 com name e steamid64
-        map_name: Nome do mapa (ex: de_mirage)
-        clinch_series: Se True, melhor de 1 (BO1)
-        always_allow_steamid64: SteamID64 para manter sempre liberado (whitelist)
-        always_allow_name: Nome exibido para o SteamID liberado (não entra em time)
+        match_id: Unique match ID
+        captain1_name: Name of Team 1 captain
+        captain2_name: Name of Team 2 captain
+        team1_players: List of Team 1 players with name and steamid64
+        team2_players: List of Team 2 players with name and steamid64
+        map_name: Map name (e.g., de_mirage)
+        clinch_series: If True, best of 1 (BO1)
+        always_allow_steamid64: SteamID64 to keep always allowed (whitelist)
+        always_allow_name: Display name for the allowed SteamID (not on a team)
     
     Returns:
-        String JSON formatada para o MatchZy
+        Formatted JSON string for MatchZy
     """
     
-    # Configuração base
+    # Base configuration
     config = {
         "matchid": str(match_id),
         "num_maps": 1,
@@ -52,7 +52,7 @@ def generate_matchzy_config(
         "skip_veto": True,
         "team1": {
             "name": f"Team_{captain1_name}",
-            "tag": captain1_name[:8],  # Tag limitada a 8 chars
+            "tag": captain1_name[:8],  # Tag limited to 8 chars
             "flag": "BR",
             "players": {}
         },
@@ -71,8 +71,8 @@ def generate_matchzy_config(
             "mp_endmatch_votenextmap": "0",
             "mp_match_end_restart": "1",
             "mp_match_end_changelevel": "1",
-            # Compatibilidade MatchZy Enhanced (fork): garante modo de partida
-            # ativo e fluxo de ready->knife sem depender de .start manual.
+            # MatchZy Enhanced (fork) compatibility: ensures match mode
+            # active and ready->knife flow without relying on manual .start.
             "matchzy_autostart_mode": "1",
             "matchzy_kick_unassigned_players": "1",
             "matchzy_kick_when_no_match_loaded": "0",
@@ -95,15 +95,15 @@ def generate_matchzy_config(
         }
     }
     
-    # Adiciona jogadores do Time 1
+    # Adds Team 1 players
     for player in team1_players:
         config["team1"]["players"][player["steamid64"]] = player["name"]
     
-    # Adiciona jogadores do Time 2
+    # Adds Team 2 players
     for player in team2_players:
         config["team2"]["players"][player["steamid64"]] = player["name"]
 
-    # Mantém um SteamID sempre liberado na whitelist (como espectador)
+    # Keeps a SteamID always allowed in the whitelist (as spectator)
     allow_id = always_allow_steamid64 or ALWAYS_ALLOW_STEAMID64
     allow_name = always_allow_name or ALWAYS_ALLOW_NAME
     if allow_id:
@@ -111,36 +111,36 @@ def generate_matchzy_config(
             config["spectators"]["players"][allow_id] = allow_name
             logger.debug(f"Whitelist extra: {allow_name} ({allow_id})")
     
-    # Converte para JSON
+    # Converts to JSON
     json_str = json.dumps(config, indent=2, ensure_ascii=False)
     
-    logger.info(f"✅ Match config gerado para Match #{match_id}")
-    logger.debug(f"Time 1: {captain1_name} ({len(team1_players)} jogadores)")
-    logger.debug(f"Time 2: {captain2_name} ({len(team2_players)} jogadores)")
-    logger.debug(f"Mapa: {map_name}")
+    logger.info(f"✅ Match config generated for Match #{match_id}")
+    logger.debug(f"Team 1: {captain1_name} ({len(team1_players)} players)")
+    logger.debug(f"Team 2: {captain2_name} ({len(team2_players)} players)")
+    logger.debug(f"Map: {map_name}")
     
     return json_str
 
 
 def escape_json_for_rcon(json_str: str) -> str:
     """
-    Escapa o JSON para envio via RCON.
+    Escapes JSON for sending via RCON.
     
-    RCON precisa que aspas duplas sejam escapadas com backslash.
+    RCON requires double quotes to be escaped with backslash.
     
     Args:
-        json_str: String JSON original
+        json_str: Original JSON string
     
     Returns:
-        String JSON escapada para RCON
+        JSON string escaped for RCON
     """
-    # Escapa aspas duplas
+    # Escapes double quotes
     escaped = json_str.replace('"', '\\"')
     
-    # Remove quebras de linha (opcional, mas recomendado para RCON)
+    # Removes line breaks (optional, but recommended for RCON)
     escaped = escaped.replace('\n', ' ').replace('\r', '')
     
-    # Remove espaços extras
+    # Removes extra spaces
     import re
     escaped = re.sub(r'\s+', ' ', escaped)
     
@@ -157,22 +157,22 @@ def save_match_config_file(config_data: any, match_id: int, output_dir: str = "m
     filename = f"{output_dir}/match_{match_id}_{timestamp}.json"
     
     with open(filename, 'w', encoding='utf-8') as f:
-        # Verifica se já é string ou se é dicionário
+        # Checks if it's already a string or a dictionary
         if isinstance(config_data, dict):
             f.write(json.dumps(config_data, indent=4, ensure_ascii=False))
         else:
             f.write(str(config_data))
     
-    logger.info(f"📁 Match config salvo em: {filename}")
+    logger.info(f"📁 Match config saved to: {filename}")
     return filename
 
 
-# ==================== EXEMPLO DE USO ====================
+# ==================== USAGE EXAMPLE ====================
 
 def example_usage():
-    """Exemplo de como usar as funções"""
+    """Example of how to use the functions"""
     
-    # Dados do mix
+    # Mix data
     match_id = 123
     captain1 = "PlayerAlpha"
     captain2 = "PlayerBravo"
@@ -193,7 +193,7 @@ def example_usage():
         {"name": "Player10", "steamid64": "76561198000000010"},
     ]
     
-    # Gera config
+    # Generate config
     config_json = generate_matchzy_config(
         match_id=match_id,
         captain1_name=captain1,
@@ -203,16 +203,16 @@ def example_usage():
         map_name="de_mirage"
     )
     
-    # Escapa para RCON
+    # Escapes for RCON
     escaped_json = escape_json_for_rcon(config_json)
     
-    # Comando RCON final
+    # Final RCON command
     rcon_command = f'matchzy_loadmatch_url "{escaped_json}"'
     
-    print("=== COMANDO RCON ===")
+    print("=== RCON COMMAND ===")
     print(rcon_command)
     
-    # Salva arquivo (opcional)
+    # Saves file (optional)
     save_match_config_file(config_json, match_id)
     
     return rcon_command

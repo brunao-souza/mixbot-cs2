@@ -70,11 +70,11 @@ def _is_emoji_only_nickname(value: str) -> bool:
 def _validate_nickname_input(nickname: str) -> str | None:
     nick = str(nickname or "").strip()
     if not nick:
-        return "Nickname invalido."
+        return "Invalid nickname."
     if len(nick) > 20:
-        return "Nickname deve ter no maximo 20 caracteres."
+        return "Nickname must be at most 20 characters."
     if _is_emoji_only_nickname(nick):
-        return "Nickname nao pode ser apenas emoji."
+        return "Nickname cannot be only emoji."
     return None
 
 
@@ -89,10 +89,10 @@ def _get_member_role(guild: discord.Guild | None) -> discord.Role | None:
     if MEMBER_ROLE_NAME:
         return discord.utils.get(guild.roles, name=MEMBER_ROLE_NAME)
 
-    return discord.utils.get(guild.roles, name="Membro")
+    return discord.utils.get(guild.roles, name="Member")
 
 
-def build_cadastro_panel_embed(guild: discord.Guild) -> discord.Embed:
+def build_registration_panel_embed(guild: discord.Guild) -> discord.Embed:
     proximo_channel = guild.get_channel(SALA_PROXIMO_ID) if SALA_PROXIMO_ID else None
     ajuda_channel = guild.get_channel(CANAL_AJUDA_ID) if CANAL_AJUDA_ID else None
 
@@ -100,37 +100,37 @@ def build_cadastro_panel_embed(guild: discord.Guild) -> discord.Embed:
     ajuda_text = f"<#{ajuda_channel.id}>" if ajuda_channel else "o canal de ajuda"
 
     embed = discord.Embed(
-        title="🛡️ Registro de Atleta",
+        title="🛡️ Athlete Registration",
         description=(
-            "Bem-vindo ao sistema de registro do MixBot! "
-            "Siga os passos abaixo para vincular sua conta e começar sua jornada competitiva.\n\n"
+            "Welcome to the MixBot registration system! "
+            "Follow the steps below to link your account and start your competitive journey.\n\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━"
         ),
         color=0x00FA9A,  # Vibrant Medium Spring Green
     )
     
     embed.add_field(
-        name="✨ Como funciona?",
+        name="✨ How it works?",
         value=(
-            "1️⃣ Clique no botão **`Cadastrar`** abaixo.\n"
-            "2️⃣ Informe seu **SteamID64** (17 dígitos).\n"
-            "3️⃣ Defina seu **Nickname** único para o Mix.\n"
-            "4️⃣ Confirme os dados da sua Steam."
+            "1️⃣ Click the **`Register`** button below.\n"
+            "2️⃣ Enter your **SteamID64** (17 digits).\n"
+            "3️⃣ Set your unique **Mix Nickname**.\n"
+            "4️⃣ Confirm your Steam data."
         ),
         inline=False,
     )
     
     embed.add_field(
-        name="📍 Onde ir depois?",
-        value=f"Após o registro, entre em {proximo_text} para participar dos mixes automáticos.",
+        name="📍 Where to go next?",
+        value=f"After registration, join {proximo_text} to participate in automatic mixes.",
         inline=False,
     )
 
     embed.add_field(
-        name="🚨 Avisos Importantes",
+        name="🚨 Important Notices",
         value=(
-            "• Use sua **conta principal** da Steam.\n"
-            f"• Dúvidas ou suporte? Procure {ajuda_text}."
+            "• Use your **main Steam account**.\n"
+            f"• Questions or support? Ask in {ajuda_text}."
         ),
         inline=False,
     )
@@ -139,7 +139,7 @@ def build_cadastro_panel_embed(guild: discord.Guild) -> discord.Embed:
         embed.set_thumbnail(url=guild.icon.url)
         
     embed.set_footer(
-        text="Nickname bloqueado após registro (exceto para VIPs)", 
+        text="Nickname locked after registration (except for VIPs)", 
         icon_url=guild.icon.url if guild.icon else None
     )
     
@@ -148,13 +148,13 @@ def build_cadastro_panel_embed(guild: discord.Guild) -> discord.Embed:
 
 def _build_confirmation_embed(steamid64: str, steam_nickname: str, nickname: str, avatar: str) -> discord.Embed:
     embed = discord.Embed(
-        title="✅ Confirme seus Dados",
-        description="Quase lá! Verifique se as informações abaixo estão corretas antes de salvar seu perfil.",
+        title="✅ Confirm Your Data",
+        description="Almost there! Check that the information below is correct before saving your profile.",
         color=0x00BFFF,  # Deep Sky Blue
     )
     
     embed.add_field(
-        name="👤 Perfil Steam", 
+        name="👤 Steam Profile", 
         value=f"**{steam_nickname}**", 
         inline=True
     )
@@ -165,7 +165,7 @@ def _build_confirmation_embed(steamid64: str, steam_nickname: str, nickname: str
     )
     
     embed.add_field(
-        name="🎮 Nickname no Mix", 
+        name="🎮 Mix Nickname", 
         value=f"**{nickname}**", 
         inline=False
     )
@@ -173,7 +173,7 @@ def _build_confirmation_embed(steamid64: str, steam_nickname: str, nickname: str
     if avatar:
         embed.set_thumbnail(url=avatar)
         
-    embed.set_footer(text="Ao confirmar, seu nickname será alterado automaticamente no servidor.")
+    embed.set_footer(text="Upon confirmation, your nickname will be automatically changed on the server.")
     
     return embed
 
@@ -190,12 +190,12 @@ async def _finalize_registration(interaction: discord.Interaction, steamid64: st
     nick = str(nickname or "").strip()
 
     if await has_complete_registration(discord_id):
-        await _send_ephemeral_fallback(interaction, "Voce ja concluiu o cadastro.")
+        await _send_ephemeral_fallback(interaction, "You have already completed registration.")
         return
     if await is_nickname_in_use(nick, exclude_discord_id=discord_id):
         await _send_ephemeral_fallback(
             interaction,
-            "Esse nickname ja esta em uso por outro player. Escolha outro e tente novamente.",
+            "This nickname is already in use by another player. Choose another and try again.",
         )
         return
 
@@ -204,12 +204,12 @@ async def _finalize_registration(interaction: discord.Interaction, steamid64: st
         if await is_nickname_in_use(nick, exclude_discord_id=discord_id):
             await _send_ephemeral_fallback(
                 interaction,
-                "Esse nickname ja esta em uso por outro player. Escolha outro e tente novamente.",
+                "This nickname is already in use by another player. Choose another and try again.",
             )
             return
         await _send_ephemeral_fallback(
             interaction,
-            "Nao foi possivel concluir o cadastro. SteamID ou Discord ja cadastrados.",
+            "Could not complete registration. SteamID or Discord already registered.",
         )
         return
 
@@ -218,7 +218,7 @@ async def _finalize_registration(interaction: discord.Interaction, steamid64: st
         try:
             await interaction.user.add_roles(role)
         except Exception as exc:
-            logger.error(f"Erro ao adicionar cargo de membro: {exc}")
+            logger.error(f"Error adding member role: {exc}")
 
     nick_warning = ""
     if isinstance(interaction.user, discord.Member):
@@ -233,23 +233,23 @@ async def _finalize_registration(interaction: discord.Interaction, steamid64: st
             has_hierarchy = bool(bot_member.top_role > interaction.user.top_role)
             if is_owner:
                 nick_warning = (
-                    "\n\nAviso: cadastro concluido, mas nao consigo alterar nickname do dono do servidor."
+                    "\n\nWarning: registration completed, but I cannot change the server owner's nickname."
                 )
             elif not can_manage_nicks:
                 nick_warning = (
-                    "\n\nAviso: cadastro concluido, mas o bot esta sem permissao 'Gerenciar apelidos'."
+                    "\n\nWarning: registration completed, but the bot lacks 'Manage Nicknames' permission."
                 )
             elif not has_hierarchy:
                 nick_warning = (
-                    "\n\nAviso: cadastro concluido, mas a hierarquia de cargos impede alterar seu nickname."
+                    "\n\nWarning: registration completed, but the role hierarchy prevents changing your nickname."
                 )
 
         try:
             if not nick_warning:
-                await interaction.user.edit(nick=nick, reason="Cadastro inicial MixBot")
+                await interaction.user.edit(nick=nick, reason="MixBot initial registration")
             else:
                 logger.warning(
-                    "Cadastro sem alteracao de nickname: "
+                    "Registration without nickname change: "
                     f"guild={getattr(guild, 'id', None)} user={interaction.user.id} "
                     f"owner={getattr(guild, 'owner_id', None) == interaction.user.id if guild else None} "
                     f"bot_manage_nicks={getattr(bot_member.guild_permissions, 'manage_nicknames', None) if bot_member else None} "
@@ -258,42 +258,42 @@ async def _finalize_registration(interaction: discord.Interaction, steamid64: st
                 )
         except discord.Forbidden as exc:
             nick_warning = (
-                "\n\nAviso: cadastro concluido, mas nao consegui alterar seu nickname "
-                "(verifique hierarquia/permissoes)."
+                "\n\nWarning: registration completed, but I could not change your nickname "
+                "(check hierarchy/permissions)."
             )
             logger.warning(
-                "Nao foi possivel aplicar nickname no cadastro: "
+                "Could not apply nickname during registration: "
                 f"guild={getattr(guild, 'id', None)} user={interaction.user.id} "
                 f"bot_manage_nicks={getattr(bot_member.guild_permissions, 'manage_nicknames', None) if bot_member else None} "
                 f"bot_top={getattr(getattr(bot_member, 'top_role', None), 'position', None)} "
                 f"user_top={getattr(getattr(interaction.user, 'top_role', None), 'position', None)} "
                 f"owner={getattr(guild, 'owner_id', None) == interaction.user.id if guild else None} "
-                f"erro={exc}"
+                f"error={exc}"
             )
         except Exception as exc:
             nick_warning = (
-                "\n\nAviso: cadastro concluido, mas nao consegui alterar seu nickname "
-                "(verifique hierarquia/permissoes)."
+                "\n\nWarning: registration completed, but I could not change your nickname "
+                "(check hierarchy/permissions)."
             )
-            logger.warning(f"Nao foi possivel aplicar nickname no cadastro para {interaction.user.id}: {exc}")
+            logger.warning(f"Could not apply nickname during registration for {interaction.user.id}: {exc}")
 
-    await _send_ephemeral_fallback(interaction, f"Cadastro concluido com sucesso.{nick_warning}")
+    await _send_ephemeral_fallback(interaction, f"Registration completed successfully.{nick_warning}")
 
 
-class CadastroModal(Modal, title="Cadastro Mix"):
+class RegistrationModal(Modal, title="Mix Registration"):
     def __init__(self, cog: "SteamCog", discord_id: int, steamid64: str = "", nickname: str = ""):
         super().__init__()
         self.cog = cog
         self.discord_id = int(discord_id)
         self.steamid64 = TextInput(
-            label="Informe seu SteamID64",
-            placeholder="Ex.: 7656119...",
+            label="Enter your SteamID64",
+            placeholder="E.g.: 7656119...",
             max_length=20,
             default=str(steamid64 or "").strip(),
         )
         self.nickname = TextInput(
-            label="Escolha seu nickname definitivo",
-            placeholder="Defina com cuidado: depois do cadastro ele fica bloqueado",
+            label="Choose your permanent nickname",
+            placeholder="Choose carefully: it gets locked after registration",
             max_length=20,
             default=str(nickname or "").strip(),
         )
@@ -302,11 +302,11 @@ class CadastroModal(Modal, title="Cadastro Mix"):
 
     async def on_submit(self, interaction: discord.Interaction):
         if int(interaction.user.id) != self.discord_id:
-            await interaction.response.send_message("Este formulario nao e para voce.", ephemeral=True)
+            await interaction.response.send_message("This form is not for you.", ephemeral=True)
             return
 
         if await has_complete_registration(self.discord_id):
-            await interaction.response.send_message("Voce ja concluiu o cadastro.", ephemeral=True)
+            await interaction.response.send_message("You have already completed registration.", ephemeral=True)
             return
 
         steamid64 = str(self.steamid64.value or "").strip()
@@ -314,7 +314,7 @@ class CadastroModal(Modal, title="Cadastro Mix"):
 
         if not validate_steamid64(steamid64):
             await interaction.response.send_message(
-                "SteamID invalido (deve comecar com 7656... e ter 17 numeros).",
+                "Invalid SteamID (must start with 7656... and have 17 digits).",
                 ephemeral=True,
             )
             return
@@ -325,7 +325,7 @@ class CadastroModal(Modal, title="Cadastro Mix"):
             return
         if await is_nickname_in_use(nickname, exclude_discord_id=self.discord_id):
             await interaction.response.send_message(
-                "Esse nickname ja esta em uso por outro player. Escolha outro.",
+                "This nickname is already in use by another player. Choose another.",
                 ephemeral=True,
             )
             return
@@ -333,7 +333,7 @@ class CadastroModal(Modal, title="Cadastro Mix"):
         profile = await get_steam_profile(steamid64)
         if not profile:
             await interaction.response.send_message(
-                "Conta nao encontrada na Steam ou perfil privado.",
+                "Account not found on Steam or profile is private.",
                 ephemeral=True,
             )
             return
@@ -341,7 +341,7 @@ class CadastroModal(Modal, title="Cadastro Mix"):
         steam_nickname = str(profile.get("nickname") or "Steam User")
         avatar = str(profile.get("avatar") or "")
         embed = _build_confirmation_embed(steamid64, steam_nickname, nickname, avatar)
-        view = CadastroConfirmView(
+        view = RegistrationConfirmView(
             cog=self.cog,
             discord_id=self.discord_id,
             steamid64=steamid64,
@@ -352,14 +352,14 @@ class CadastroModal(Modal, title="Cadastro Mix"):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
-        logger.opt(exception=error).error(f"Erro no modal de cadastro para {self.discord_id}")
+        logger.opt(exception=error).error(f"Error in registration modal for {self.discord_id}")
         await _send_ephemeral_fallback(
             interaction,
-            "Falha ao validar seu cadastro. Tente novamente pelo botao de cadastro.",
+            "Failed to validate your registration. Try again using the registration button.",
         )
 
 
-class CadastroConfirmView(View):
+class RegistrationConfirmView(View):
     def __init__(
         self,
         cog: "SteamCog",
@@ -380,80 +380,80 @@ class CadastroConfirmView(View):
     async def _ensure_owner(self, interaction: discord.Interaction) -> bool:
         if int(interaction.user.id) == self.discord_id:
             return True
-        await interaction.response.send_message("Este botao nao e para voce.", ephemeral=True)
+        await interaction.response.send_message("This button is not for you.", ephemeral=True)
         return False
 
-    @discord.ui.button(label="Confirmar", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: Button):
         if not await self._ensure_owner(interaction):
             return
         await interaction.response.defer(ephemeral=True)
         await _finalize_registration(interaction, self.steamid64, self.nickname)
 
-    @discord.ui.button(label="Corrigir dados", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Fix data", style=discord.ButtonStyle.secondary)
     async def retry(self, interaction: discord.Interaction, button: Button):
         if not await self._ensure_owner(interaction):
             return
         await interaction.response.send_modal(
-            CadastroModal(self.cog, self.discord_id, self.steamid64, self.nickname)
+            RegistrationModal(self.cog, self.discord_id, self.steamid64, self.nickname)
         )
 
-    @discord.ui.button(label="Cancelar", style=discord.ButtonStyle.danger, row=1)
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, row=1)
     async def cancel(self, interaction: discord.Interaction, button: Button):
         if not await self._ensure_owner(interaction):
             return
-        await interaction.response.edit_message(content="Cancelado.", embed=None, view=None)
+        await interaction.response.edit_message(content="Cancelled.", embed=None, view=None)
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:
         logger.opt(exception=error).error(
-            f"Erro em CadastroConfirmView discord_id={self.discord_id} item={getattr(item, 'custom_id', None)}"
+            f"Error in RegistrationConfirmView discord_id={self.discord_id} item={getattr(item, 'custom_id', None)}"
         )
         await _send_ephemeral_fallback(
             interaction,
-            "Falha nesta acao do cadastro. Clique no botao de cadastro novamente.",
+            "Failed this registration action. Click the registration button again.",
         )
 
 
-class CadastroPanelView(View):
+class RegistrationPanelView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="Cadastrar",
+        label="Register",
         style=discord.ButtonStyle.success,
-        custom_id="steam_cadastro_open",
+        custom_id="steam_registration_open",
     )
-    async def open_cadastro(self, interaction: discord.Interaction, button: Button):
+    async def open_registration(self, interaction: discord.Interaction, button: Button):
         cog = interaction.client.get_cog("SteamCog")
         if cog is None:
             await interaction.response.send_message(
-                "Cadastro indisponivel no momento. Tente novamente em instantes.",
+                "Registration is currently unavailable. Try again in a moment.",
                 ephemeral=True,
             )
             return
 
-        await cog.open_cadastro_modal(interaction)
+        await cog.open_registration_modal(interaction)
 
 
 class SteamCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    async def open_cadastro_modal(self, interaction: discord.Interaction):
+    async def open_registration_modal(self, interaction: discord.Interaction):
         if int(interaction.channel_id or 0) != int(CANAL_STEAMID_ID or 0):
-            await interaction.response.send_message(f"Use o cadastro em <#{CANAL_STEAMID_ID}>.", ephemeral=True)
+            await interaction.response.send_message(f"Use registration in <#{CANAL_STEAMID_ID}>.", ephemeral=True)
             return
 
         if await has_complete_registration(interaction.user.id):
-            await interaction.response.send_message("Voce ja concluiu o cadastro.", ephemeral=True)
+            await interaction.response.send_message("You have already completed registration.", ephemeral=True)
             return
 
-        await interaction.response.send_modal(CadastroModal(self, interaction.user.id))
-        logger.info(f"Cadastro: {interaction.user.name} iniciou o fluxo de cadastro")
+        await interaction.response.send_modal(RegistrationModal(self, interaction.user.id))
+        logger.info(f"Registration: {interaction.user.name} started registration flow")
 
-    @app_commands.command(name="cadastro", description="Abre manualmente o modal de cadastro.")
-    async def cadastro(self, interaction: discord.Interaction):
-        await self.open_cadastro_modal(interaction)
+    @app_commands.command(name="register", description="Manually open the registration modal.")
+    async def register(self, interaction: discord.Interaction):
+        await self.open_registration_modal(interaction)
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
@@ -481,28 +481,28 @@ class SteamCog(commands.Cog):
         if is_vip_nick:
             synced_nick = new_nick or str(after.display_name or "").strip()
             if not synced_nick:
-                logger.warning(f"VIP sem nickname valido para sincronizar: user={after.id}")
+                logger.warning(f"VIP without valid nickname to sync: user={after.id}")
                 return
             if synced_nick == expected_nick:
                 return
             try:
                 if await is_nickname_in_use(synced_nick, exclude_discord_id=after.id):
                     logger.warning(
-                        f"VIP tentou usar nickname ja existente: guild={after.guild.id} user={after.id} nick={synced_nick!r}"
+                        f"VIP tried to use existing nickname: guild={after.guild.id} user={after.id} nick={synced_nick!r}"
                     )
-                    await after.edit(nick=expected_nick, reason="Nickname duplicado no cadastro")
+                    await after.edit(nick=expected_nick, reason="Duplicate nickname in registration")
                     return
                 updated = await update_player_nickname(after.id, synced_nick)
                 if updated:
                     logger.info(
-                        f"VIP nickname sincronizado no banco: guild={after.guild.id} user={after.id} nick={synced_nick!r}"
+                        f"VIP nickname synced in database: guild={after.guild.id} user={after.id} nick={synced_nick!r}"
                     )
                 else:
                     logger.warning(
-                        f"VIP nao encontrado para sincronizar nickname: guild={after.guild.id} user={after.id}"
+                        f"VIP not found for nickname sync: guild={after.guild.id} user={after.id}"
                     )
             except Exception as exc:
-                logger.warning(f"Falha ao sincronizar nickname VIP de {after.id}: {exc}")
+                logger.warning(f"Failed to sync VIP nickname for {after.id}: {exc}")
             return
 
         guild = after.guild
@@ -512,26 +512,26 @@ class SteamCog(commands.Cog):
 
         if guild and bot_member:
             if after.id == guild.owner_id:
-                logger.warning(f"Trava nickname ignorada para owner: {after.id}")
+                logger.warning(f"Nickname lock ignored for owner: {after.id}")
                 return
             if not bot_member.guild_permissions.manage_nicknames:
                 logger.warning(
-                    f"Trava nickname sem permissao manage_nicknames: guild={guild.id} user={after.id}"
+                    f"Nickname lock without manage_nicknames permission: guild={guild.id} user={after.id}"
                 )
                 return
             if not (bot_member.top_role > after.top_role):
                 logger.warning(
-                    "Trava nickname bloqueada por hierarquia: "
+                    "Nickname lock blocked by hierarchy: "
                     f"guild={guild.id} user={after.id} bot_top={bot_member.top_role.position} user_top={after.top_role.position}"
                 )
                 return
 
         try:
-            await after.edit(nick=expected_nick, reason="Trava de nickname do cadastro")
+            await after.edit(nick=expected_nick, reason="Registration nickname lock")
         except Exception as exc:
-            logger.warning(f"Nao foi possivel reverter nickname de {after.id}: {exc}")
+            logger.warning(f"Could not revert nickname for {after.id}: {exc}")
 
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(SteamCog(bot))
-    logger.debug("SteamCog carregado")
+    logger.debug("SteamCog loaded")
