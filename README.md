@@ -64,7 +64,7 @@ Antes de começar, você precisará ter/configurar:
 ### Passo 1: Clonar o repositório
 
 ```bash
-git clone https://github.com/SEU_USUARIO/mixbot-backend.git
+git clone https://github.com/brunao-souza/mixbot-cs2.git
 cd mixbot-backend
 ```
 
